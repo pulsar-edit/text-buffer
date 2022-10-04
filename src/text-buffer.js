@@ -1,5 +1,5 @@
 const {Emitter, CompositeDisposable} = require('event-kit')
-const {File} = require('pathwatcher')
+const File = require('./file')
 const diff = require('diff')
 const _ = require('underscore-plus')
 const path = require('path')

@@ -5,8 +5,11 @@ const _ = require('underscore-plus')
 const path = require('path')
 const crypto = require('crypto')
 const mkdirp = require('mkdirp')
-const superstring = require('superstring')
-const NativeTextBuffer = superstring.TextBuffer
+let NativeTextBuffer;
+require('superstring').superstring.then(s => {
+  console.log("Required", s)
+  NativeTextBuffer = s.TextBuffer
+});
 const Point = require('./point')
 const Range = require('./range')
 const DefaultHistoryProvider = require('./default-history-provider')
@@ -83,7 +86,7 @@ class TextBuffer {
     this.changesSinceLastStoppedChangingEvent = []
     this.changesSinceLastDidChangeTextEvent = []
     this.id = crypto.randomBytes(16).toString('hex')
-    this.buffer = new NativeTextBuffer(typeof params === 'string' ? params : params.text)
+    this.buffer = new NativeTextBuffer(typeof params === 'string' ? params : params.text || "")
     this.debouncedEmitDidStopChangingEvent = debounce(this.emitDidStopChangingEvent.bind(this), this.stoppedChangingDelay)
     this.maxUndoEntries = params.maxUndoEntries != null ? params.maxUndoEntries : this.defaultMaxUndoEntries
     this.setHistoryProvider(new DefaultHistoryProvider(this))
@@ -2491,7 +2494,8 @@ Object.assign(TextBuffer, {
   spliceArray: spliceArray
 })
 
-TextBuffer.Patch = superstring.Patch
+let Patch;
+require('superstring').superstring.then(r => Patch = r.Patch);
 
 Object.assign(TextBuffer.prototype, {
   stoppedChangingDelay: 300,
@@ -2518,7 +2522,7 @@ class ChangeEvent {
       enumerable: false,
       get () {
         if (oldText == null) {
-          const oldBuffer = new NativeTextBuffer(this.newText)
+          const oldBuffer = new NativeTextBuffer(this.newText || "")
           for (let i = changes.length - 1; i >= 0; i--) {
             const change = changes[i]
             oldBuffer.setTextInRange(

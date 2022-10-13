@@ -3,7 +3,8 @@
 Point = require "./point"
 Range = require "./range"
 Marker = require "./marker"
-{MarkerIndex} = require "superstring"
+MarkerIndex = null;
+require('superstring').superstring.then (r) => MarkerIndex = r.MarkerIndex;
 {intersectSet} = require "./set-helpers"
 
 SerializationVersion = 2

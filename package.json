@@ -2,7 +2,7 @@
   "name": "text-buffer",
   "version": "13.18.6",
   "description": "A container for large mutable strings with annotated regions",
-  "main": "./lib/text-buffer",
+  "main": "./src/text-buffer",
   "scripts": {
     "prepublish": "npm run clean && npm run compile && npm run lint && npm run docs",
     "docs": "node script/generate-docs",

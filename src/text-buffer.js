@@ -7,7 +7,6 @@ const crypto = require('crypto')
 const mkdirp = require('mkdirp')
 let NativeTextBuffer;
 require('superstring').superstring.then(s => {
-  console.log("Required", s)
   NativeTextBuffer = s.TextBuffer
 });
 const Point = require('./point')

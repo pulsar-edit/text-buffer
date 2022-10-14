@@ -1,5 +1,6 @@
 let Patch;
-require('superstring').superstring.then(r => Patch = r.Patch);
+const {superstring} = require('superstring')
+superstring.then(r => Patch = r.Patch);
 const {Emitter} = require('event-kit')
 const Point = require('./point')
 const Range = require('./range')
@@ -23,7 +24,9 @@ class DisplayLayer {
     this.nextBuiltInScopeId = 1
     this.displayMarkerLayersById = new Map()
     this.destroyed = false
-    this.changesSinceLastEvent = new Patch()
+    superstring.then(() => {
+      this.changesSinceLastEvent = new Patch()
+    })
 
     this.invisibles = params.invisibles != null ? params.invisibles : {}
     this.tabLength = params.tabLength != null ? params.tabLength : 4

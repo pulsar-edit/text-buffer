@@ -3,8 +3,9 @@
 Point = require "./point"
 Range = require "./range"
 Marker = require "./marker"
+{superstring} = require 'superstring'
 MarkerIndex = null;
-require('superstring').superstring.then (r) => MarkerIndex = r.MarkerIndex;
+superstring.then (r) => MarkerIndex = r.MarkerIndex;
 {intersectSet} = require "./set-helpers"
 
 SerializationVersion = 2
@@ -39,7 +40,8 @@ class MarkerLayer
     @delegate.registerSelectionsMarkerLayer(this) if @role is "selections"
     @persistent = options?.persistent ? false
     @emitter = new Emitter
-    @index = new MarkerIndex
+    superstring.then () =>
+      @index = new MarkerIndex
     @markersById = {}
     @markersWithChangeListeners = new Set
     @markersWithDestroyListeners = new Set

@@ -53,7 +53,7 @@
     "grim": "^2.0.2",
     "mkdirp": "^0.5.1",
     "serializable": "^1.0.3",
-    "superstring": "https://github.com/pulsar-edit/superstring.git#0d0929b2286a25c81ee74a511707c015594a697a",
+    "superstring": "https://github.com/pulsar-edit/superstring.git#708924046f8db9d05901a5372337f249ff5c47bb",
     "underscore-plus": "^1.0.0",
     "winattr": "^3.0.0"
   },

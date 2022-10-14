@@ -5,8 +5,9 @@ const _ = require('underscore-plus')
 const path = require('path')
 const crypto = require('crypto')
 const mkdirp = require('mkdirp')
+const {superstring} = require('superstring');
 let NativeTextBuffer;
-require('superstring').superstring.then(s => {
+superstring.then(s => {
   NativeTextBuffer = s.TextBuffer
 });
 const Point = require('./point')
@@ -85,7 +86,9 @@ class TextBuffer {
     this.changesSinceLastStoppedChangingEvent = []
     this.changesSinceLastDidChangeTextEvent = []
     this.id = crypto.randomBytes(16).toString('hex')
-    this.buffer = new NativeTextBuffer(typeof params === 'string' ? params : params.text || "")
+    superstring.then(() => {
+      this.buffer = new NativeTextBuffer(typeof params === 'string' ? params : params.text || "")
+    })
     this.debouncedEmitDidStopChangingEvent = debounce(this.emitDidStopChangingEvent.bind(this), this.stoppedChangingDelay)
     this.maxUndoEntries = params.maxUndoEntries != null ? params.maxUndoEntries : this.defaultMaxUndoEntries
     this.setHistoryProvider(new DefaultHistoryProvider(this))

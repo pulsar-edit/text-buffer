@@ -24,9 +24,7 @@ class DisplayLayer {
     this.nextBuiltInScopeId = 1
     this.displayMarkerLayersById = new Map()
     this.destroyed = false
-    superstring.then(() => {
-      this.changesSinceLastEvent = new Patch()
-    })
+    this.changesSinceLastEvent = new Patch()
 
     this.invisibles = params.invisibles != null ? params.invisibles : {}
     this.tabLength = params.tabLength != null ? params.tabLength : 4

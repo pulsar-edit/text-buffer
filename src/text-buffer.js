@@ -86,9 +86,7 @@ class TextBuffer {
     this.changesSinceLastStoppedChangingEvent = []
     this.changesSinceLastDidChangeTextEvent = []
     this.id = crypto.randomBytes(16).toString('hex')
-    superstring.then(() => {
-      this.buffer = new NativeTextBuffer(typeof params === 'string' ? params : params.text || "")
-    })
+    this.buffer = new NativeTextBuffer(typeof params === 'string' ? params : params.text || "")
     this.debouncedEmitDidStopChangingEvent = debounce(this.emitDidStopChangingEvent.bind(this), this.stoppedChangingDelay)
     this.maxUndoEntries = params.maxUndoEntries != null ? params.maxUndoEntries : this.defaultMaxUndoEntries
     this.setHistoryProvider(new DefaultHistoryProvider(this))

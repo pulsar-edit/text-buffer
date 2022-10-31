@@ -56,7 +56,7 @@
     "superstring": "https://github.com/pulsar-edit/superstring.git#708924046f8db9d05901a5372337f249ff5c47bb",
     "underscore-plus": "^1.0.0",
     "winattr": "^3.0.0",
-    "pathwatcher": "https://github.com/pulsar-edit/pulsar-pathwatcher.git"
+    "pathwatcher": "https://github.com/pulsar-edit/pulsar-pathwatcher.git#de91ac16e20f12cc04779cc256c6f55087b91a92"
   },
   "standard": {
     "env": {

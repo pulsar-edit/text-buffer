@@ -2122,9 +2122,9 @@ class TextBuffer {
         if (patch.getChangeCount() > 0) {
           checkpoint = this.historyProvider.createCheckpoint({markers: this.createMarkerSnapshot(), isBarrier: true})
           this.emitter.emit('will-reload')
-          return this.emitWillChangeEvent()
+          this.emitWillChangeEvent()
         } else if (options && options.discardChanges) {
-          return this.emitter.emit('will-reload')
+          this.emitter.emit('will-reload')
         }
       }
       this.finishLoading(checkpoint, patch, options)

@@ -2116,20 +2116,17 @@ class TextBuffer {
           encoding: this.getEncoding(),
           force: options && options.discardChanges,
           patch: this.loaded
-        },
-        (percentDone, patch) => {
-          if (this.loadCount > loadCount) return false
-          if (patch) {
-            if (patch.getChangeCount() > 0) {
-              checkpoint = this.historyProvider.createCheckpoint({markers: this.createMarkerSnapshot(), isBarrier: true})
-              this.emitter.emit('will-reload')
-              return this.emitWillChangeEvent()
-            } else if (options && options.discardChanges) {
-              return this.emitter.emit('will-reload')
-            }
-          }
         }
       )
+      if (patch) {
+        if (patch.getChangeCount() > 0) {
+          checkpoint = this.historyProvider.createCheckpoint({markers: this.createMarkerSnapshot(), isBarrier: true})
+          this.emitter.emit('will-reload')
+          return this.emitWillChangeEvent()
+        } else if (options && options.discardChanges) {
+          return this.emitter.emit('will-reload')
+        }
+      }
       this.finishLoading(checkpoint, patch, options)
     } catch (error) {
       if ((!options || !options.mustExist) && error.code === 'ENOENT') {
@@ -2263,9 +2260,7 @@ class TextBuffer {
         this.fileHasChangedSinceLastLoad = true
 
         if (this.isModified()) {
-          const source = this.file instanceof File
-            ? this.file.getPath()
-            : this.file.createReadStream()
+          const source = this.file.getPath()
           if (!(await this.buffer.baseTextMatchesFile(source, this.getEncoding()))) {
             this.emitter.emit('did-conflict')
           }

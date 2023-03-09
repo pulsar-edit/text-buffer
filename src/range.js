@@ -4,7 +4,6 @@
  * decaffeinate suggestions:
  * DS101: Remove unnecessary use of Array.from
  * DS102: Remove unnecessary code created because of implicit returns
- * DS206: Consider reworking classes to avoid initClass
  * DS207: Consider shorter variations of null checks
  * Full docs: https://github.com/decaffeinate/decaffeinate/blob/main/docs/suggestions.md
  */
@@ -28,18 +27,6 @@ let newlineRegex = null;
 module.exports =
 (Range = (function() {
   Range = class Range {
-    static initClass() {
-      /*
-      Section: Properties
-      */
-
-      // Public: A {Point} representing the start of the {Range}.
-      this.prototype.start = null;
-
-      // Public: A {Point} representing the end of the {Range}.
-      this.prototype.end = null;
-    }
-
     /*
     Section: Construction
     */
@@ -377,7 +364,6 @@ module.exports =
       return `[${this.start} - ${this.end}]`;
     }
   };
-  Range.initClass();
 
   function callableConstructor(c, f) {
     function Range(a, b) {
@@ -393,6 +379,9 @@ module.exports =
     Range.fromPointWithDelta = c.fromPointWithDelta
     Range.fromPointWithTraversalExtent = c.fromPointWithTraversalExtent
     Range.deserialize = c.deserialize
+    Range.prototype.start = null;
+    Range.prototype.end = null;
+
     return Range
   }
   return callableConstructor(Range, (a, b) => new Range(a, b));

@@ -19,22 +19,6 @@ let Point;
 module.exports =
 (Point = (function() {
   Point = class Point {
-    static initClass() {
-      /*
-      Section: Properties
-      */
-
-      // Public: A zero-indexed {Number} representing the row of the {Point}.
-      this.prototype.row = null;
-
-      // Public: A zero-indexed {Number} representing the column of the {Point}.
-      this.prototype.column = null;
-
-      this.ZERO = Object.freeze(new Point(0, 0));
-
-      this.INFINITY = Object.freeze(new Point(Infinity, Infinity));
-    }
-
     /*
     Section: Construction
     */
@@ -315,7 +299,7 @@ module.exports =
       return `(${this.row}, ${this.column})`;
     }
   };
-  Point.initClass();
+  // Point.initClass();
 
   function callableConstructor(c, f) {
     function Point(row, col) {
@@ -330,6 +314,10 @@ module.exports =
     Point.min = c.min
     Point.max = c.max
     Point.assertValid = c.assertValid
+    Point.prototype.row = null;
+    Point.prototype.column = null;
+    Point.ZERO = Object.freeze(new c(0, 0));
+    Point.INFINITY = Object.freeze(new c(Infinity, Infinity));
 
     return Point
   }

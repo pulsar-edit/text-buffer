@@ -23,15 +23,15 @@ module.exports =
       /*
       Section: Properties
       */
-  
+
       // Public: A zero-indexed {Number} representing the row of the {Point}.
       this.prototype.row = null;
-  
+
       // Public: A zero-indexed {Number} representing the column of the {Point}.
       this.prototype.column = null;
-  
+
       this.ZERO = Object.freeze(new Point(0, 0));
-  
+
       this.INFINITY = Object.freeze(new Point(Infinity, Infinity));
     }
 
@@ -106,9 +106,6 @@ module.exports =
     // * `row` {Number} row
     // * `column` {Number} column
     constructor(row=0, column=0) {
-      if (!(this instanceof Point)) {
-        return new Point(row, column);
-      }
       this.row = row;
       this.column = column;
     }
@@ -319,7 +316,19 @@ module.exports =
     }
   };
   Point.initClass();
-  return Point;
+
+  function callableConstructor(c, f) {
+    function Point(row, col) {
+      if(new.target) {
+        return new c(row, col)
+      }
+      return f(row, col)
+    }
+    Point.prototype = c.prototype
+    Point.prototype.constructor = Point
+    return Point
+  }
+  return callableConstructor(Point, (row, col) => new Point(row, col));
 })());
 
 var isNumber = value => (typeof value === 'number') && (!Number.isNaN(value));

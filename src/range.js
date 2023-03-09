@@ -32,10 +32,10 @@ module.exports =
       /*
       Section: Properties
       */
-  
+
       // Public: A {Point} representing the start of the {Range}.
       this.prototype.start = null;
-  
+
       // Public: A {Point} representing the end of the {Range}.
       this.prototype.end = null;
     }
@@ -378,7 +378,19 @@ module.exports =
     }
   };
   Range.initClass();
-  return Range;
+
+  function callableConstructor(c, f) {
+    function Range(a, b) {
+      if(new.target) {
+        return new c(a, b)
+      }
+      return f(a, b)
+    }
+    Range.prototype = c.prototype
+    Range.prototype.constructor = Range
+    return Range
+  }
+  return callableConstructor(Range, (a, b) => new Range(a, b));
 })());
 
 function __range__(left, right, inclusive) {

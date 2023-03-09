@@ -326,6 +326,11 @@ module.exports =
     }
     Point.prototype = c.prototype
     Point.prototype.constructor = Point
+    Point.fromObject = c.fromObject
+    Point.min = c.min
+    Point.max = c.max
+    Point.assertValid = c.assertValid
+
     return Point
   }
   return callableConstructor(Point, (row, col) => new Point(row, col));

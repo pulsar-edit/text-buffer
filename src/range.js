@@ -388,6 +388,11 @@ module.exports =
     }
     Range.prototype = c.prototype
     Range.prototype.constructor = Range
+    Range.fromObject = c.fromObject
+    Range.fromText = c.fromText
+    Range.fromPointWithDelta = c.fromPointWithDelta
+    Range.fromPointWithTraversalExtent = c.fromPointWithTraversalExtent
+    Range.deserialize = c.deserialize
     return Range
   }
   return callableConstructor(Range, (a, b) => new Range(a, b));

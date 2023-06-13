@@ -56,7 +56,7 @@
     "superstring": "https://github.com/pulsar-edit/superstring-wasm.git#312d1fb",
     "underscore-plus": "^1.0.0",
     "winattr": "^3.0.0",
-    "pathwatcher": "https://github.com/pulsar-edit/node-pathwatcher.git#567561f"
+    "pathwatcher": "https://github.com/pulsar-edit/node-pathwatcher.git#e56a44c"
   },
   "standard": {
     "env": {

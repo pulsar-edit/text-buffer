@@ -7,8 +7,7 @@
  * Full docs: https://github.com/decaffeinate/decaffeinate/blob/main/docs/suggestions.md
  */
 let DefaultHistoryProvider;
-let Patch = null;
-require('superstring').superstring.then(r => { return Patch = r.Patch; });
+const {Patch} = require('superstring')
 const MarkerLayer = require('./marker-layer');
 const {traversal} = require('./point-helpers');
 const {patchFromChanges} = require('./helpers');
@@ -588,4 +587,3 @@ var snapshotFromTransaction = function(transaction) {
 
 var transactionFromSnapshot = ({changes, markersBefore, markersAfter}) => // TODO: Return raw patch if there's no markersBefore && markersAfter
   new Transaction(markersBefore, patchFromChanges(changes), markersAfter);
-

@@ -3,9 +3,7 @@ const {Emitter} = require('event-kit');
 const Point = require("./point");
 const Range = require("./range");
 const Marker = require("./marker");
-const {superstring} = require('superstring');
-let MarkerIndex = null;
-superstring.then((r) => { return MarkerIndex = r.MarkerIndex; });
+const {MarkerIndex} = require("superstring")
 const {intersectSet} = require("./set-helpers");
 const SerializationVersion = 2;
 

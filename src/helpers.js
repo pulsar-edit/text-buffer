@@ -1,5 +1,4 @@
-let Patch;
-require('superstring').superstring.then(r => Patch = r.Patch);
+const {Patch} = require('superstring')
 const Range = require('./range')
 const {traversal} = require('./point-helpers')
 

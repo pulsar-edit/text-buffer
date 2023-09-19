@@ -5,11 +5,7 @@ const _ = require('underscore-plus')
 const path = require('path')
 const crypto = require('crypto')
 const mkdirp = require('mkdirp')
-const {superstring} = require('superstring');
-let NativeTextBuffer;
-superstring.then(s => {
-  NativeTextBuffer = s.TextBuffer
-});
+const {TextBuffer: NativeTextBuffer, Patch} = require('superstring');
 const Point = require('./point')
 const Range = require('./range')
 const DefaultHistoryProvider = require('./default-history-provider')
@@ -2488,9 +2484,6 @@ Object.assign(TextBuffer, {
   newlineRegex: newlineRegex,
   spliceArray: spliceArray
 })
-
-let Patch;
-require('superstring').superstring.then(r => Patch = r.Patch);
 
 Object.assign(TextBuffer.prototype, {
   stoppedChangingDelay: 300,

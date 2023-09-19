@@ -6,8 +6,7 @@ const {Disposable} = require('event-kit')
 const Point = require('../src/point')
 const Range = require('../src/range')
 const TextBuffer = require('../src/text-buffer')
-let NativeTextBuffer;
-require('superstring').superstring.then(s => NativeTextBuffer = s.TextBuffer);
+const {TextBuffer: NativeTextBuffer} = require('superstring')
 const fsAdmin = require('fs-admin')
 const pathwatcher = require('pathwatcher')
 const winattr = require('winattr')

@@ -53,7 +53,7 @@
     "grim": "^2.0.2",
     "mkdirp": "^0.5.1",
     "serializable": "^1.0.3",
-    "superstring": "https://github.com/pulsar-edit/superstring-wasm.git#312d1fb",
+    "superstring": "https://github.com/bongnv/superstring.git#d2a885bd2756ce73391dec3e3fb060fbe9597459",
     "underscore-plus": "^1.0.0",
     "winattr": "^3.0.0",
     "pathwatcher": "https://github.com/pulsar-edit/node-pathwatcher.git#e56a44c"

@@ -1,5 +1,4 @@
-let MarkerIndex;
-require('superstring').superstring.then(s => MarkerIndex = s.MarkerIndex)
+const {MarkerIndex} = require('superstring')
 const {Emitter} = require('event-kit')
 const Point = require('../../src/point')
 const Range = require('../../src/range')

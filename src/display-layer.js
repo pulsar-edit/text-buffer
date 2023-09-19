@@ -1,6 +1,4 @@
-let Patch;
-const {superstring} = require('superstring')
-superstring.then(r => Patch = r.Patch);
+const {Patch} = require('superstring')
 const {Emitter} = require('event-kit')
 const Point = require('./point')
 const Range = require('./range')

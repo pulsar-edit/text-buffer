@@ -512,7 +512,7 @@ module.exports = class MarkerLayer {
     start = this.delegate.clipPosition(start);
     end = this.delegate.clipPosition(end);
     this.index.remove(id);
-    return this.index.insert(id, start, end);
+    return this.index.insert(parseInt(id), start, end);
   }
 
   setMarkerIsExclusive(id, exclusive) {
@@ -542,7 +542,7 @@ module.exports = class MarkerLayer {
     range = Range.fromObject(range);
     Point.assertValid(range.start);
     Point.assertValid(range.end);
-    this.index.insert(id, range.start, range.end);
+    this.index.insert(parseInt(id), range.start, range.end);
     return this.markersById[id] = new Marker(id, this, range, params);
   }
 

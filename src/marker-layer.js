@@ -507,12 +507,13 @@ module.exports = class MarkerLayer {
   }
 
   setMarkerRange(id, range) {
+    id = parseInt(id);
     var end, start;
     ({start, end} = Range.fromObject(range));
     start = this.delegate.clipPosition(start);
     end = this.delegate.clipPosition(end);
     this.index.remove(id);
-    return this.index.insert(parseInt(id), start, end);
+    return this.index.insert(id, start, end);
   }
 
   setMarkerIsExclusive(id, exclusive) {
@@ -539,10 +540,11 @@ module.exports = class MarkerLayer {
   Section: Internal
   */
   addMarker(id, range, params) {
+    id = parseInt(id);
     range = Range.fromObject(range);
     Point.assertValid(range.start);
     Point.assertValid(range.end);
-    this.index.insert(parseInt(id), range.start, range.end);
+    this.index.insert(id, range.start, range.end);
     return this.markersById[id] = new Marker(id, this, range, params);
   }
 

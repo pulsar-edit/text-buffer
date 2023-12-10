@@ -12,13 +12,21 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v1
-      - uses: actions/setup-node@v2
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '14'
+          node-version: '16'
+      - name: Install Python setuptools
+        # This is needed for Python 3.12+, since many versions of node-gyp
+        # are incompatible with Python 3.12+, which no-longer ships 'distutils'
+        # out of the box. 'setuptools' package provides 'distutils'.
+        run: python3 -m pip install setuptools
       - name: Install windows-build-tools
         if: ${{ matrix.os == 'windows-latest' }}
         run: npm config set msvs_version 2019
+      - name: Pre-warm the node headers cache for node-gyp
+        if: ${{ runner.os == 'Windows' }}
+        run: npx node-gyp install
       - name: Install dependencies
         run: npm i
       - name: Run tests

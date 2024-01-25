@@ -54,7 +54,7 @@
     "mkdirp": "^0.5.1",
     "pathwatcher": "^8.1.0",
     "serializable": "^1.0.3",
-    "superstring": "^2.4.4",
+    "superstring": "https://github.com/pulsar-edit/superstring/archive/c2ff062317362363eae7d392cd78aef4fcc8b9f8.tar.gz",
     "underscore-plus": "^1.0.0",
     "winattr": "^3.0.0"
   },

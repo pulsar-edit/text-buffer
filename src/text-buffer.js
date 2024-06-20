@@ -5,8 +5,11 @@ const _ = require('underscore-plus')
 const path = require('path')
 const crypto = require('crypto')
 const mkdirp = require('mkdirp')
-const superstring = require('superstring')
-const NativeTextBuffer = superstring.TextBuffer
+const {superstring} = require('superstring');
+let NativeTextBuffer;
+superstring.then(s => {
+  NativeTextBuffer = s.TextBuffer
+});
 const Point = require('./point')
 const Range = require('./range')
 const DefaultHistoryProvider = require('./default-history-provider')
@@ -83,7 +86,7 @@ class TextBuffer {
     this.changesSinceLastStoppedChangingEvent = []
     this.changesSinceLastDidChangeTextEvent = []
     this.id = crypto.randomBytes(16).toString('hex')
-    this.buffer = new NativeTextBuffer(typeof params === 'string' ? params : params.text)
+    this.buffer = new NativeTextBuffer(typeof params === 'string' ? params : params.text || "")
     this.debouncedEmitDidStopChangingEvent = debounce(this.emitDidStopChangingEvent.bind(this), this.stoppedChangingDelay)
     this.maxUndoEntries = params.maxUndoEntries != null ? params.maxUndoEntries : this.defaultMaxUndoEntries
     this.setHistoryProvider(new DefaultHistoryProvider(this))
@@ -2113,20 +2116,17 @@ class TextBuffer {
           encoding: this.getEncoding(),
           force: options && options.discardChanges,
           patch: this.loaded
-        },
-        (percentDone, patch) => {
-          if (this.loadCount > loadCount) return false
-          if (patch) {
-            if (patch.getChangeCount() > 0) {
-              checkpoint = this.historyProvider.createCheckpoint({markers: this.createMarkerSnapshot(), isBarrier: true})
-              this.emitter.emit('will-reload')
-              return this.emitWillChangeEvent()
-            } else if (options && options.discardChanges) {
-              return this.emitter.emit('will-reload')
-            }
-          }
         }
       )
+      if (patch) {
+        if (patch.getChangeCount() > 0) {
+          checkpoint = this.historyProvider.createCheckpoint({markers: this.createMarkerSnapshot(), isBarrier: true})
+          this.emitter.emit('will-reload')
+          this.emitWillChangeEvent()
+        } else if (options && options.discardChanges) {
+          this.emitter.emit('will-reload')
+        }
+      }
       this.finishLoading(checkpoint, patch, options)
     } catch (error) {
       if ((!options || !options.mustExist) && error.code === 'ENOENT') {
@@ -2260,9 +2260,7 @@ class TextBuffer {
         this.fileHasChangedSinceLastLoad = true
 
         if (this.isModified()) {
-          const source = this.file instanceof File
-            ? this.file.getPath()
-            : this.file.createReadStream()
+          const source = this.file.getPath()
           if (!(await this.buffer.baseTextMatchesFile(source, this.getEncoding()))) {
             this.emitter.emit('did-conflict')
           }
@@ -2491,7 +2489,8 @@ Object.assign(TextBuffer, {
   spliceArray: spliceArray
 })
 
-TextBuffer.Patch = superstring.Patch
+let Patch;
+require('superstring').superstring.then(r => Patch = r.Patch);
 
 Object.assign(TextBuffer.prototype, {
   stoppedChangingDelay: 300,
@@ -2518,7 +2517,7 @@ class ChangeEvent {
       enumerable: false,
       get () {
         if (oldText == null) {
-          const oldBuffer = new NativeTextBuffer(this.newText)
+          const oldBuffer = new NativeTextBuffer(this.newText || "")
           for (let i = changes.length - 1; i >= 0; i--) {
             const change = changes[i]
             oldBuffer.setTextInRange(

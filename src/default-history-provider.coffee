@@ -1,4 +1,5 @@
-{Patch} = require 'superstring'
+Patch = null;
+require('superstring').superstring.then (r) => Patch = r.Patch;
 MarkerLayer = require './marker-layer'
 {traversal} = require './point-helpers'
 {patchFromChanges} = require './helpers'

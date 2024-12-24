@@ -77,7 +77,10 @@ some other object in your package, keyed by the marker's id property.\
       return outputParams;
     }
 
-    constructor(id, layer, range, params, exclusivitySet) {
+    constructor(id, layer, _range, params, exclusivitySet) {
+      // The `_range` parameter is kept in place just to keep the API stable,
+      // but it's not used; the marker asks its layer for its range later on
+      // via `::getRange`.
       this.id = id;
       this.layer = layer;
       if (exclusivitySet == null) { exclusivitySet = false; }

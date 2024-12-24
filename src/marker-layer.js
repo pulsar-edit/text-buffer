@@ -459,8 +459,10 @@ module.exports = class MarkerLayer {
     for (id in ref) {
       markerState = ref[id];
       range = Range.fromObject(markerState.range);
-      delete markerState.range;
-      this.addMarker(id, range, markerState);
+      // `markerState` is frozen, so instead of deleting its `range` we'll
+      // create a new object and copy all properties _except_ `range`.
+      let { range: oldRange, ...params } = markerState
+      this.addMarker(id, range, { ...params });
     }
   }
 

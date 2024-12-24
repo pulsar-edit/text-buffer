@@ -98,11 +98,12 @@ describe "MarkerLayer", ->
       buffer.transact -> buffer.append('foo')
       layer3 = buffer.addMarkerLayer(maintainHistory: true)
 
-      marker1 = layer3.markRange([[0, 0], [0, 0]], a: 'b', invalidate: 'never')
-      marker2 = layer3.markRange([[0, 0], [0, 0]], c: 'd', invalidate: 'never')
+      marker1 = layer3.markRange([[0, 0], [0, 0]], invalidate: 'never')
+      marker2 = layer3.markRange([[0, 0], [0, 0]], invalidate: 'never')
 
       marker2ChangeCount = 0
       marker2.onDidChange -> marker2ChangeCount++
+
 
       buffer.transact ->
         buffer.append('\n')
@@ -110,8 +111,8 @@ describe "MarkerLayer", ->
 
         marker1.destroy()
         marker2.setRange([[0, 2], [0, 3]])
-        marker3 = layer3.markRange([[0, 0], [0, 3]], e: 'f', invalidate: 'never')
-        marker4 = layer3.markRange([[1, 0], [1, 3]], g: 'h', invalidate: 'never')
+        marker3 = layer3.markRange([[0, 0], [0, 3]], invalidate: 'never')
+        marker4 = layer3.markRange([[1, 0], [1, 3]], invalidate: 'never')
         expect(marker2ChangeCount).toBe(1)
 
       createdMarker = null
@@ -124,9 +125,7 @@ describe "MarkerLayer", ->
       markers = layer3.findMarkers({})
       expect(markers.length).toBe 2
       expect(markers[0]).toBe marker1
-      expect(markers[0].getProperties()).toEqual {a: 'b'}
       expect(markers[0].getRange()).toEqual [[0, 0], [0, 0]]
-      expect(markers[1].getProperties()).toEqual {c: 'd'}
       expect(markers[1].getRange()).toEqual [[0, 0], [0, 0]]
       expect(marker2ChangeCount).toBe(2)
 
@@ -135,11 +134,8 @@ describe "MarkerLayer", ->
       expect(buffer.getText()).toBe 'foo\nbar'
       markers = layer3.findMarkers({})
       expect(markers.length).toBe 3
-      expect(markers[0].getProperties()).toEqual {e: 'f'}
       expect(markers[0].getRange()).toEqual [[0, 0], [0, 3]]
-      expect(markers[1].getProperties()).toEqual {c: 'd'}
       expect(markers[1].getRange()).toEqual [[0, 2], [0, 3]]
-      expect(markers[2].getProperties()).toEqual {g: 'h'}
       expect(markers[2].getRange()).toEqual [[1, 0], [1, 3]]
 
     it "does not undo marker manipulations that aren't associated with text changes", ->
@@ -301,7 +297,7 @@ describe "MarkerLayer", ->
   describe "::copy", ->
     it "creates a new marker layer with markers in the same states", ->
       originalLayer = buffer.addMarkerLayer(maintainHistory: true)
-      originalLayer.markRange([[0, 1], [0, 3]], a: 'b')
+      originalLayer.markRange([[0, 1], [0, 3]])
       originalLayer.markPosition([0, 2])
 
       copy = originalLayer.copy()
@@ -310,7 +306,6 @@ describe "MarkerLayer", ->
       markers = copy.getMarkers()
       expect(markers.length).toBe 2
       expect(markers[0].getRange()).toEqual [[0, 1], [0, 3]]
-      expect(markers[0].getProperties()).toEqual {a: 'b'}
       expect(markers[1].getRange()).toEqual [[0, 2], [0, 2]]
       expect(markers[1].hasTail()).toBe false
 

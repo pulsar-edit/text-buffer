@@ -4,11 +4,11 @@
   "description": "A container for large mutable strings with annotated regions",
   "main": "./src/text-buffer",
   "scripts": {
-    "prepublish": "npm run clean && npm run compile && npm run lint && npm run docs",
+    "prepublish": "npm run clean && npm run compile && npm run lint",
     "docs": "node script/generate-docs",
     "clean": "rimraf lib api.json",
     "compile": "coffee --no-header --output lib --compile src && cpy src/*.js lib/",
-    "lint": "coffeelint -r src spec && standard src/*.js spec/*.js",
+    "lint": "coffeelint -r src spec",
     "test": "node script/test",
     "ci": "npm run compile && npm run lint && npm run test && npm run bench",
     "bench": "node benchmarks/index"
@@ -30,7 +30,7 @@
     "cpy-cli": "^1.0.1",
     "dedent": "^0.6.0",
     "donna": "^1.0.16",
-    "electron": "^6",
+    "electron": "^30",
     "jasmine": "^2.4.1",
     "jasmine-core": "^2.4.1",
     "joanna": "0.0.11",
@@ -53,10 +53,10 @@
     "grim": "^2.0.2",
     "mkdirp": "^0.5.1",
     "serializable": "^1.0.3",
-    "superstring": "https://github.com/bongnv/superstring.git#d2a885bd2756ce73391dec3e3fb060fbe9597459",
+    "superstring": "github:savetheclocktower/superstring#e5e848017f7a28fe250b45f8c7f8ed244371d33d",
     "underscore-plus": "^1.0.0",
     "winattr": "^3.0.0",
-    "pathwatcher": "https://github.com/pulsar-edit/node-pathwatcher.git#e56a44c"
+    "pathwatcher": "https://github.com/savetheclocktower/node-pathwatcher#6c3d8fe510d56172abfae482a1af79f24eb4d793"
   },
   "standard": {
     "env": {

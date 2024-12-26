@@ -56,7 +56,7 @@
     "superstring": "github:savetheclocktower/superstring#e5e848017f7a28fe250b45f8c7f8ed244371d33d",
     "underscore-plus": "^1.0.0",
     "winattr": "^3.0.0",
-    "pathwatcher": "https://github.com/savetheclocktower/node-pathwatcher#6c3d8fe510d56172abfae482a1af79f24eb4d793"
+    "pathwatcher": "github:savetheclocktower/node-pathwatcher#649232b264940e27ff578f848d1ec9aa3ebb09b9"
   },
   "standard": {
     "env": {

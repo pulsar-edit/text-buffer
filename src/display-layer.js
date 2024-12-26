@@ -54,7 +54,14 @@ class DisplayLayer {
       this.rightmostScreenPosition = params.rightmostScreenPosition
       this.indexedBufferRowCount = params.indexedBufferRowCount
     } else {
-      this.spatialIndex = new Patch({mergeAdjacentHunks: false})
+      this.spatialIndex = new Patch({
+        // The `mergeAdjacentHunks` option in `superstring` was renamed to
+        // `mergeAdjacentChanges` at a certain point. In order to remain
+        // compatible with the broadest possible range of `superstring`
+        // dependencies, we pass both options here.
+        mergeAdjacentHunks: false,
+        mergeAdjacentChanges: false
+      })
       this.tabCounts = []
       this.screenLineLengths = []
       this.rightmostScreenPosition = Point(0, 0)

@@ -572,12 +572,6 @@ class TextBuffer {
   //   * `onDidRename` (optional) A {Function} that invokes its callback argument
   //     when the file is renamed. The method should return a {Disposable} that
   //     can be used to prevent further calls to the callback.
-  //
-  // * `options` An optional {Object} with the following properties, each of
-  //   which is optional:
-  //   * `async` Whether this method can go async. If so, it may return a
-  //   {Promise} in certain scenarios in order to allow native file-watching
-  //   to complete.
   setFile (file) {
     if (!this.file && !file) return
     if (file && file.getPath() === this.getPath()) return
@@ -1367,7 +1361,7 @@ class TextBuffer {
   // Returns a checkpoint id value.
   createCheckpoint (options) {
     return this.historyProvider.createCheckpoint({
-      markers: this.createMarkerSnapshot(options?.selectionsMarkerLayer),
+      markers: this.createMarkerSnapshot(options?.selectionsMarkerLayer ?? undefined),
       isBarrier: false
     })
   }

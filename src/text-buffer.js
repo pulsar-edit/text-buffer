@@ -5,7 +5,7 @@ const _ = require('underscore-plus')
 const path = require('path')
 const crypto = require('crypto')
 const mkdirp = require('mkdirp')
-const {TextBuffer: NativeTextBuffer, Patch} = require('superstring');
+const {TextBuffer: NativeTextBuffer} = require('superstring');
 const Point = require('./point')
 const Range = require('./range')
 const DefaultHistoryProvider = require('./default-history-provider')
@@ -2124,6 +2124,11 @@ class TextBuffer {
           patch: this.loaded
         }
       )
+
+      // If this is not the most recent load of this file, then we should bow
+      // out and let the newer call to `load` handle the tasks below.
+      if (this.loadCount > loadCount) return
+
       if (patch) {
         if (patch.getChangeCount() > 0) {
           checkpoint = this.historyProvider.createCheckpoint({markers: this.createMarkerSnapshot(), isBarrier: true})

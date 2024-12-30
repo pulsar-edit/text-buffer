@@ -5,7 +5,7 @@ const _ = require('underscore-plus')
 const path = require('path')
 const crypto = require('crypto')
 const mkdirp = require('mkdirp')
-const {TextBuffer: NativeTextBuffer, Patch} = require('superstring');
+const {TextBuffer: NativeTextBuffer} = require('superstring');
 const Point = require('./point')
 const Range = require('./range')
 const DefaultHistoryProvider = require('./default-history-provider')
@@ -77,6 +77,7 @@ class TextBuffer {
     this.conflict = false
     this.file = null
     this.fileSubscriptions = null
+    this.oldFileSubscriptions = null
     this.stoppedChangingTimeout = null
     this.emitter = new Emitter()
     this.changesSinceLastStoppedChangingEvent = []
@@ -84,7 +85,7 @@ class TextBuffer {
     this.id = crypto.randomBytes(16).toString('hex')
     this.buffer = new NativeTextBuffer(typeof params === 'string' ? params : params.text || "")
     this.debouncedEmitDidStopChangingEvent = debounce(this.emitDidStopChangingEvent.bind(this), this.stoppedChangingDelay)
-    this.maxUndoEntries = params.maxUndoEntries != null ? params.maxUndoEntries : this.defaultMaxUndoEntries
+    this.maxUndoEntries = params.maxUndoEntries ?? this.defaultMaxUndoEntries
     this.setHistoryProvider(new DefaultHistoryProvider(this))
     this.languageMode = new NullLanguageMode()
     this.nextMarkerLayerId = 0
@@ -1359,7 +1360,10 @@ class TextBuffer {
   //
   // Returns a checkpoint id value.
   createCheckpoint (options) {
-    return this.historyProvider.createCheckpoint({markers: this.createMarkerSnapshot(options != null ? options.selectionsMarkerLayer : undefined), isBarrier: false})
+    return this.historyProvider.createCheckpoint({
+      markers: this.createMarkerSnapshot(options?.selectionsMarkerLayer ?? undefined),
+      isBarrier: false
+    })
   }
 
   // Public: Revert the buffer to the state it was in when the given
@@ -2114,6 +2118,11 @@ class TextBuffer {
           patch: this.loaded
         }
       )
+
+      // If this is not the most recent load of this file, then we should bow
+      // out and let the newer call to `load` handle the tasks below.
+      if (this.loadCount > loadCount) return
+
       if (patch) {
         if (patch.getChangeCount() > 0) {
           checkpoint = this.historyProvider.createCheckpoint({markers: this.createMarkerSnapshot(), isBarrier: true})
@@ -2203,9 +2212,8 @@ class TextBuffer {
     this.emitter.emit('did-destroy')
     this.emitter.clear()
 
-    if (this.fileSubscriptions != null) {
-      this.fileSubscriptions.dispose()
-    }
+    this.fileSubscriptions?.dispose()
+
     for (const id in this.markerLayers) {
       const markerLayer = this.markerLayers[id]
       markerLayer.destroy()
@@ -2244,7 +2252,14 @@ class TextBuffer {
   }
 
   subscribeToFile () {
-    if (this.fileSubscriptions) this.fileSubscriptions.dispose()
+    if (this.fileSubscriptions) {
+      // If we were to unsubscribe and immediately resubscribe, we might
+      // trigger destruction and recreation of a native file watcher — which is
+      // costly and unnecessary. We can avoid that cost by overlapping the
+      // switch and only disposing of the old `CompositeDisposable` after the
+      // new one has attached its subscriptions.
+      this.oldFileSubscriptions = this.fileSubscriptions
+    }
     this.fileSubscriptions = new CompositeDisposable()
 
     if (this.file.onDidChange) {
@@ -2288,6 +2303,11 @@ class TextBuffer {
       this.fileSubscriptions.add(this.file.onWillThrowWatchError(error => {
         this.emitter.emit('will-throw-watch-error', error)
       }))
+    }
+
+    if (this.oldFileSubscriptions) {
+      this.oldFileSubscriptions.dispose()
+      this.oldFileSubscriptions = null
     }
   }
 

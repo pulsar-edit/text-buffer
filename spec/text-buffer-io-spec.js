@@ -13,10 +13,14 @@ const winattr = require('winattr')
 
 process.on('unhandledRejection', console.error)
 
+async function wait (ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
 describe('TextBuffer IO', () => {
   let buffer, buffer2
 
-  afterEach(() => {
+  afterEach(async () => {
     if (buffer) buffer.destroy()
     if (buffer2) buffer2.destroy()
 
@@ -27,6 +31,10 @@ describe('TextBuffer IO', () => {
       }
       pathwatcher.closeAllWatchers()
     }
+    // `await` briefly to allow the file watcher to clean up. This is a
+    // `pathwatcher` requirement that we can fix by updating its API — but
+    // that's a can of worms we don't want to open yet.
+    await wait(10);
   })
 
   describe('.load', () => {

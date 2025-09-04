@@ -1,10 +1,8 @@
 /*
  * decaffeinate suggestions:
- * DS101: Remove unnecessary use of Array.from
  * DS102: Remove unnecessary code created because of implicit returns
  * Full docs: https://github.com/decaffeinate/decaffeinate/blob/main/docs/suggestions.md
  */
-let DisplayMarkerLayer;
 const {Emitter, CompositeDisposable} = require('event-kit');
 const DisplayMarker = require('./display-marker');
 const Range = require('./range');
@@ -14,20 +12,21 @@ const Point = require('./point');
 // {DisplayLayer} level. Wraps an underlying {MarkerLayer} on the {TextBuffer}.
 //
 // This API is experimental and subject to change on any release.
-module.exports =
-(DisplayMarkerLayer = class DisplayMarkerLayer {
+class DisplayMarkerLayer {
   constructor(displayLayer, bufferMarkerLayer, ownsBufferMarkerLayer) {
     this.displayLayer = displayLayer;
     this.bufferMarkerLayer = bufferMarkerLayer;
     this.ownsBufferMarkerLayer = ownsBufferMarkerLayer;
-    ({id: this.id} = this.bufferMarkerLayer);
+    this.id = this.bufferMarkerLayer.id;
     this.bufferMarkerLayer.displayMarkerLayers.add(this);
     this.markersById = {};
     this.destroyed = false;
     this.emitter = new Emitter;
     this.subscriptions = new CompositeDisposable;
     this.markersWithDestroyListeners = new Set;
-    this.subscriptions.add(this.bufferMarkerLayer.onDidUpdate(this.emitDidUpdate.bind(this)));
+    this.subscriptions.add(
+      this.bufferMarkerLayer.onDidUpdate(this.emitDidUpdate.bind(this))
+    );
   }
 
   /*
@@ -38,11 +37,13 @@ module.exports =
   destroy() {
     if (this.destroyed) { return; }
     this.destroyed = true;
+
     if (this.ownsBufferMarkerLayer) { this.clear(); }
     this.subscriptions.dispose();
     this.bufferMarkerLayer.displayMarkerLayers.delete(this);
     if (this.ownsBufferMarkerLayer) { this.bufferMarkerLayer.destroy(); }
     this.displayLayer.didDestroyMarkerLayer(this.id);
+
     this.emitter.emit('did-destroy');
     return this.emitter.clear();
   }
@@ -53,8 +54,10 @@ module.exports =
   }
 
   didClearBufferMarkerLayer() {
-    this.markersWithDestroyListeners.forEach(marker => marker.didDestroyBufferMarker());
-    return this.markersById = {};
+    for (let marker of this.markersWithDestroyListeners) {
+      marker.didDestroyBufferMarker();
+    }
+    this.markersById = {};
   }
 
   // Essential: Determine whether this layer has been destroyed.
@@ -190,7 +193,9 @@ module.exports =
   markScreenPosition(screenPosition, options) {
     screenPosition = Point.fromObject(screenPosition);
     const bufferPosition = this.displayLayer.translateScreenPosition(screenPosition, options);
-    return this.getMarker(this.bufferMarkerLayer.markPosition(bufferPosition, options).id);
+    return this.getMarker(
+      this.bufferMarkerLayer.markPosition(bufferPosition, options).id
+    );
   }
 
   // Public: Create a marker with the given buffer range.
@@ -224,7 +229,9 @@ module.exports =
   // Returns a {DisplayMarker}.
   markBufferRange(bufferRange, options) {
     bufferRange = Range.fromObject(bufferRange);
-    return this.getMarker(this.bufferMarkerLayer.markRange(bufferRange, options).id);
+    return this.getMarker(
+      this.bufferMarkerLayer.markRange(bufferRange, options).id
+    );
   }
 
   // Public: Create a marker on this layer with its head at the given buffer
@@ -255,7 +262,12 @@ module.exports =
   //
   // Returns a {DisplayMarker}.
   markBufferPosition(bufferPosition, options) {
-    return this.getMarker(this.bufferMarkerLayer.markPosition(Point.fromObject(bufferPosition), options).id);
+    return this.getMarker(
+      this.bufferMarkerLayer.markPosition(
+        Point.fromObject(bufferPosition),
+        options
+      ).id
+    );
   }
 
   /*
@@ -278,7 +290,9 @@ module.exports =
   //
   // Returns an {Array} of {DisplayMarker}s.
   getMarkers() {
-    return this.bufferMarkerLayer.getMarkers().map(({id}) => this.getMarker(id));
+    return this.bufferMarkerLayer.getMarkers().map(
+      ({ id }) => this.getMarker(id)
+    );
   }
 
   // Public: Get the number of markers in the marker layer.
@@ -325,7 +339,9 @@ module.exports =
   // Returns an {Array} of {DisplayMarker}s
   findMarkers(params) {
     params = this.translateToBufferMarkerLayerFindParams(params);
-    return this.bufferMarkerLayer.findMarkers(params).map(stringMarker => this.getMarker(stringMarker.id));
+    return this.bufferMarkerLayer.findMarkers(params).map(
+      stringMarker => this.getMarker(stringMarker.id)
+    );
   }
 
   /*
@@ -465,4 +481,6 @@ module.exports =
 
     return bufferMarkerLayerFindParams;
   }
-});
+}
+
+module.exports = DisplayMarkerLayer;

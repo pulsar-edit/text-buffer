@@ -36,17 +36,26 @@ module.exports = class MarkerLayer {
   /*
   Section: Lifecycle
   */
-  constructor(delegate1, id3, options) {
-    var ref, ref1, ref2;
-    this.delegate = delegate1;
-    this.id = id3;
-    this.maintainHistory = (ref = options != null ? options.maintainHistory : void 0) != null ? ref : false;
-    this.destroyInvalidatedMarkers = (ref1 = options != null ? options.destroyInvalidatedMarkers : void 0) != null ? ref1 : false;
-    this.role = options != null ? options.role : void 0;
+  constructor(
+    delegate,
+    id,
+    {
+      destroyInvalidatedMarkers = false,
+      maintainHistory = false,
+      persistent = false,
+      role
+    } = {}
+  ) {
+    this.delegate = delegate;
+    this.id = id;
+    this.maintainHistory = maintainHistory;
+    this.destroyInvalidatedMarkers = destroyInvalidatedMarkers;
+    this.role = role;
     if (this.role === "selections") {
       this.delegate.registerSelectionsMarkerLayer(this);
     }
-    this.persistent = (ref2 = options != null ? options.persistent : void 0) != null ? ref2 : false;
+    this.persistent = persistent;
+
     this.emitter = new Emitter();
     this.index = new MarkerIndex();
     this.markersById = {};
@@ -60,13 +69,13 @@ module.exports = class MarkerLayer {
   // Public: Create a copy of this layer with markers in the same state and
   // locations.
   copy() {
-    var copy, marker, markerId, ref, snapshot;
-    copy = this.delegate.addMarkerLayer({maintainHistory: this.maintainHistory, role: this.role});
-    ref = this.markersById;
-    for (markerId in ref) {
-      marker = ref[markerId];
-      snapshot = marker.getSnapshot(null);
-      copy.createMarker(marker.getRange(), marker.getSnapshot());
+    let copy = this.delegate.addMarkerLayer({
+      maintainHistory: this.maintainHistory,
+      role: this.role
+    });
+    for (let marker of Object.values(this.markersById)) {
+      let snapshot = marker.getSnapshot(null);
+      copy.createMarker(marker.getRange(), snapshot);
     }
     return copy;
   }
@@ -124,14 +133,7 @@ module.exports = class MarkerLayer {
 
   // Returns an {Array} of {Marker}s.
   getMarkers() {
-    var id, marker, ref, results;
-    ref = this.markersById;
-    results = [];
-    for (id in ref) {
-      marker = ref[id];
-      results.push(marker);
-    }
-    return results;
+    return Object.values(this.markersById);
   }
 
   // Public: Get the number of markers in the marker layer.
@@ -145,18 +147,21 @@ module.exports = class MarkerLayer {
 
   // See the documentation for {TextBuffer::findMarkers}.
   findMarkers(params) {
-    var end, i, key, len, markerIds, position, ref, result, start, value;
-    markerIds = null;
-    ref = Object.keys(params);
-    for (i = 0, len = ref.length; i < len; i++) {
-      key = ref[i];
-      value = params[key];
+    let markerIds = null;
+    for (let [key, value] of Object.entries(params)) {
+      let start, end, position;
       switch (key) {
         case 'startPosition':
-          markerIds = filterSet(markerIds, this.index.findStartingAt(Point.fromObject(value)));
+          markerIds = filterSet(
+            markerIds,
+            this.index.findStartingAt(Point.fromObject(value))
+          );
           break;
         case 'endPosition':
-          markerIds = filterSet(markerIds, this.index.findEndingAt(Point.fromObject(value)));
+          markerIds = filterSet(
+            markerIds,
+            this.index.findEndingAt(Point.fromObject(value))
+          );
           break;
         case 'startsInRange':
           ({start, end} = Range.fromObject(value));
@@ -203,18 +208,14 @@ module.exports = class MarkerLayer {
     if (markerIds == null) {
       markerIds = new Set(Object.keys(this.markersById));
     }
-    result = [];
-    markerIds.forEach((markerId) => {
-      var marker;
-      marker = this.markersById[markerId];
-      if (!marker.matchesParams(params)) {
-        return;
-      }
-      return result.push(marker);
-    });
-    return result.sort(function(a, b) {
-      return a.compare(b);
-    });
+    let result = [];
+    for (let markerId of markerIds) {
+      let marker = this.markersById[markerId];
+      if (!marker.matchesParams(params)) continue;
+      result.push(marker);
+    }
+    result.sort((a, b) => a.compare(b));
+    return result;
   }
 
   // Public: Get the role of the marker layer e.g. `atom.selection`.

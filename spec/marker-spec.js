@@ -420,8 +420,7 @@ describe("Marker", function() {
     });
 
     it("defers notifying Marker::onDidChange observers until after notifying Buffer::onDidChange observers", function() {
-      let marker;
-      for (marker of allStrategies) {
+      for (let marker of allStrategies) {
         marker.changes = [];
         marker.onDidChange(change => marker.changes.push(change));
       }
@@ -430,7 +429,7 @@ describe("Marker", function() {
       const changeSubscription = buffer.onDidChange(function(change) {
         changedCount++;
         expect(markersUpdatedCount).toBe(0);
-        for (marker of allStrategies) {
+        for (let marker of allStrategies) {
           expect(marker.getRange()).toEqual([[0, 8], [0, 11]]);
           expect(marker.isValid()).toBe(true);
           expect(marker.changes.length).toBe(0);
@@ -441,7 +440,7 @@ describe("Marker", function() {
 
       expect(changedCount).toBe(1);
 
-      for (marker of allStrategies) {
+      for (let marker of allStrategies) {
         expect(marker.changes).toEqual([{
           oldHeadPosition: [0, 9], newHeadPosition: [0, 11],
           oldTailPosition: [0, 6], newTailPosition: [0, 8],
@@ -699,8 +698,7 @@ describe("Marker", function() {
 
     describe("when multiple changes occur in a transaction", () => {
       it("emits one change event for each marker that was indirectly updated", function() {
-        let strategy;
-        for (strategy of allStrategies) {
+        for (let strategy of allStrategies) {
           strategy.changes = [];
           strategy.onDidChange(change => strategy.changes.push(change));
         }
@@ -709,7 +707,7 @@ describe("Marker", function() {
           buffer.insert([0, 7], ".");
           buffer.append("!");
 
-          for (strategy of allStrategies) {
+          for (let strategy of allStrategies) {
             expect(strategy.changes.length).toBe(0);
           }
 

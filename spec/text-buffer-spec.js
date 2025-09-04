@@ -3097,10 +3097,13 @@ three\
         switch (changes[0].newText) {
           case 'a':
             buffer.insert(changes[0].newRange.end, 'b');
+            break;
           case 'b':
             buffer.insert(changes[0].newRange.end, 'c');
+            break;
           case 'c':
             buffer.insert(changes[0].newRange.end, 'd');
+            break;
         }
       });
 

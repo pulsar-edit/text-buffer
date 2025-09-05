@@ -19,10 +19,10 @@ function __range__(left, right, inclusive) {
 //
 // ## Examples
 //
-// ```coffee
+// ```js
 // new Range(new Point(0, 1), new Point(2, 3))
 // new Range([0, 1], [2, 3])
-// [[0, 1], [2, 3]] # Range compatible array
+// [[0, 1], [2, 3]] // Range-compatible array
 // ```
 class Range {
   /*

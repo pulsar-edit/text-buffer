@@ -4,9 +4,9 @@
 // {Array}. This means a 2-element array containing {Number}s representing the
 // row and column. So the following are equivalent:
 //
-// ```coffee
+// ```js
 // new Point(1, 2)
-// [1, 2] # Point compatible Array
+// [1, 2] // Point-compatible Array
 // ```
 
 class Point {

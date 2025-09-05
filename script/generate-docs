@@ -16,5 +16,5 @@ for (const entry of fs.readdirSync('src')) {
 }
 
 const jsMetadata = joanna(jsFiles)
-const docs = tello.digest(jsMetadata)
+const docs = tello.digest([jsMetadata])
 fs.writeFileSync(path.join(rootDir, 'api.json'), JSON.stringify(docs, null, 2))

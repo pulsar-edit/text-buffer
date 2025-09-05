@@ -229,7 +229,7 @@ class MarkerLayer {
   Section: Marker creation
   */
   // Public: Create a marker with the given range.
-
+  //
   // * `range` A {Range} or range-compatible {Array}
   // * `options` A hash of key-value pairs to associate with the marker. There
   //   are also reserved property names that have marker-specific meaning.
@@ -262,7 +262,7 @@ class MarkerLayer {
   }
 
   // Public: Create a marker at with its head at the given position with no tail.
-
+  //
   // * `position` {Point} or point-compatible {Array}
   // * `options` (optional) An {Object} with the following keys:
   //   * `invalidate` (optional) {String} Determines the rules by which changes
@@ -301,10 +301,10 @@ class MarkerLayer {
   // created, updated, or destroyed on this layer. *Prefer this method for
   // optimal performance when interacting with layers that could contain large
   // numbers of markers.*
-
+  //
   // * `callback` A {Function} that will be called with no arguments when changes
   //   occur on this layer.
-
+  //
   // Subscribers are notified once, asynchronously when any number of changes
   // occur in a given tick of the event loop. You should re-query the layer
   // to determine the state of markers in which you're interested in. It may
@@ -319,10 +319,10 @@ class MarkerLayer {
   // Public: Subscribe to be notified synchronously whenever markers are created
   // on this layer. *Avoid this method for optimal performance when interacting
   // with layers that could contain large numbers of markers.*
-
+  //
   // * `callback` A {Function} that will be called with a {Marker} whenever a
   //   new marker is created.
-
+  // 
   // You should prefer {::onDidUpdate} when synchronous notifications aren't
   // absolutely necessary.
 

@@ -1,3 +1,7 @@
+function isActualNumber (value) {
+  return (typeof value === 'number') && (!Number.isNaN(value));
+}
+
 // Public: Represents a point in a buffer in row/column coordinates.
 //
 // Every public method that takes a point also accepts a *point-compatible*
@@ -8,24 +12,26 @@
 // new Point(1, 2)
 // [1, 2] // Point-compatible Array
 // ```
-
 class Point {
   /*
   Section: Construction
   */
 
+  static ZERO = Object.freeze(new Point(0, 0));
+  static INFINITY = Object.freeze(new Point(Infinity, Infinity));
+
   // Public: Convert any point-compatible object to a {Point}.
   //
-  // * `object` This can be an object that's already a {Point}, in which case it's
-  //   simply returned, or an array containing two {Number}s representing the
-  //   row and column.
-  // * `copy` An optional boolean indicating whether to force the copying of objects
-  //   that are already points.
+  // * `object` This can be an object that's already a {Point}, in which case
+  //   it's simply returned; or an array containing two {Number}s representing
+  //   the row and column.
+  // * `copy` An optional boolean indicating whether to force the copying of
+  //   objects that are already points.
   //
   // Returns: A {Point} based on the given object.
   static fromObject(object, copy) {
     if (object instanceof Point) {
-      if (copy) { return object.copy(); } else { return object; }
+      return copy ? object.copy() : object;
     } else {
       let column, row;
       if (Array.isArray(object)) {
@@ -42,7 +48,7 @@ class Point {
   Section: Comparison
   */
 
-  // Public: Returns the given {Point} that is earlier in the buffer.
+  // Public: Returns the given {Point} that occurs earlier in the buffer.
   //
   // * `point1` {Point}
   // * `point2` {Point}
@@ -56,6 +62,10 @@ class Point {
     }
   }
 
+  // Public: Returns the given {Point} that occurs later in the buffer.
+  //
+  // * `point1` {Point}
+  // * `point2` {Point}
   static max(point1, point2) {
     point1 = Point.fromObject(point1);
     point2 = Point.fromObject(point2);
@@ -66,20 +76,19 @@ class Point {
     }
   }
 
+  // Public: Ensure the given {Point} is valid by throwing a `TypeError` if
+  // either its `row` or its `column` is not an integer.
   static assertValid(point) {
     if (!isActualNumber(point.row) || !isActualNumber(point.column)) {
       throw new TypeError(`Invalid Point: ${point}`);
     }
   }
 
-  static ZERO = Object.freeze(new Point(0, 0));
-  static INFINITY = Object.freeze(new Point(Infinity, Infinity));
-
   /*
   Section: Construction
   */
 
-  // Public: Construct a {Point} object
+  // Public: Construct a {Point} object.
   //
   // * `row` {Number} row
   // * `column` {Number} column
@@ -102,9 +111,9 @@ class Point {
   Section: Operations
   */
 
-  // Public: Makes this point immutable and returns itself.
+  // Public: Make this point immutable and return itself.
   //
-  // Returns an immutable version of this {Point}
+  // Returns an immutable version of this {Point}.
   freeze() {
     return Object.freeze(this);
   }
@@ -302,22 +311,11 @@ function _Point (...args) {
 }
 _Point.displayName = 'Point';
 _Point.prototype = Point.prototype;
-_Point.prototype.constructor = _Point;
-Object.assign(_Point, {
-  fromObject: Point.fromObject,
-  min: Point.min,
-  max: Point.max,
-  assertValid: Point.assertValid,
-  ZERO: Point.ZERO,
-  INFINITY: Point.INFINITY
-});
 Object.assign(_Point.prototype, {
   row: null,
   column: null
 });
-
-function isActualNumber (value) {
-  return (typeof value === 'number') && (!Number.isNaN(value));
-}
+// Make the wrapper inherit the parent's static methods.
+Object.setPrototypeOf(_Point, Point);
 
 module.exports = _Point;

@@ -371,15 +371,11 @@ function _Range (...args) {
 };
 _Range.displayName = 'Range';
 _Range.prototype = Range.prototype;
-_Range.prototype.constructor = _Range;
-Object.assign(_Range, {
-  fromObject: Range.fromObject,
-  fromText: Range.fromText,
-  fromPointWithDelta: Range.fromPointWithDelta,
-  fromPointWithTraversalExtent: Range.fromPointWithTraversalExtent,
-  deserialize: Range.deserialize
+Object.assign(_Range.prototype, {
+  start: null,
+  end: null
 });
-_Range.prototype.start = null;
-_Range.prototype.end = null;
+// Make the wrapper inherit the parent's static methods.
+Object.setPrototypeOf(_Range, Range);
 
 module.exports = _Range;

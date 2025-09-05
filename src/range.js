@@ -1,13 +1,3 @@
-// TODO: This file was created by bulk-decaffeinate.
-// Sanity-check the conversion and remove this comment.
-/*
- * decaffeinate suggestions:
- * DS101: Remove unnecessary use of Array.from
- * DS102: Remove unnecessary code created because of implicit returns
- * DS207: Consider shorter variations of null checks
- * Full docs: https://github.com/decaffeinate/decaffeinate/blob/main/docs/suggestions.md
- */
-// let Range;
 const Point = require('./point');
 let newlineRegex = null;
 
@@ -20,16 +10,6 @@ function __range__(left, right, inclusive) {
   }
   return range;
 }
-
-// NOTE: The convoluted mess in this file represents the constraint of "formal"
-// JavaScript classes that you cannot treat them as functions:
-//
-// Point(0, 0); // <- TypeError: Class constructor client cannot be invoked
-//                    without 'new'
-//
-// Hence we keep the ugliness from the decaffeinated version of `Range` until
-// we find a better idiom.
-
 
 // Public: Represents a region in a buffer in row/column coordinates.
 //
@@ -354,7 +334,7 @@ class Range {
   // * `startRow` {Number} start row
   // * `endRow` {Number} end row
   intersectsRowRange(startRow, endRow) {
-    if (startRow > endRow) { [startRow, endRow] = Array.from([endRow, startRow]); }
+    if (startRow > endRow) { [startRow, endRow] = [endRow, startRow]; }
     return (this.end.row >= startRow) && (endRow >= this.start.row);
   }
 
@@ -383,6 +363,9 @@ class Range {
   }
 }
 
+// ES5 classes differ from their predecessors in that you are not allowed to
+// call them like ordinary functions. Hence we must write this wrapper function
+// which delegates to `new Range` whether it was called with `new` or not.
 function _Range (...args) {
   return new Range(...args);
 };

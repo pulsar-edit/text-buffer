@@ -1,10 +1,3 @@
-/*
- * decaffeinate suggestions:
- * DS101: Remove unnecessary use of Array.from
- * DS102: Remove unnecessary code created because of implicit returns
- * DS206: Consider reworking classes to avoid initClass
- * Full docs: https://github.com/decaffeinate/decaffeinate/blob/main/docs/suggestions.md
- */
 // Public: Represents a point in a buffer in row/column coordinates.
 //
 // Every public method that takes a point also accepts a *point-compatible*
@@ -36,7 +29,7 @@ class Point {
     } else {
       let column, row;
       if (Array.isArray(object)) {
-        [row, column] = Array.from(object);
+        [row, column] = object;
       } else {
         ({row, column} = object);
       }
@@ -78,6 +71,9 @@ class Point {
       throw new TypeError(`Invalid Point: ${point}`);
     }
   }
+
+  static ZERO = Object.freeze(new Point(0, 0));
+  static INFINITY = Object.freeze(new Point(Infinity, Infinity));
 
   /*
   Section: Construction
@@ -298,6 +294,9 @@ class Point {
   }
 }
 
+// ES5 classes differ from their predecessors in that you are not allowed to
+// call them like ordinary functions. Hence we must write this wrapper function
+// which delegates to `new Point` whether it was called with `new` or not.
 function _Point (...args) {
   return new Point(...args);
 }
@@ -309,8 +308,8 @@ Object.assign(_Point, {
   min: Point.min,
   max: Point.max,
   assertValid: Point.assertValid,
-  ZERO: Object.freeze(new Point(0, 0)),
-  INFINITY: Object.freeze(new Point(Infinity, Infinity))
+  ZERO: Point.ZERO,
+  INFINITY: Point.INFINITY
 });
 Object.assign(_Point.prototype, {
   row: null,

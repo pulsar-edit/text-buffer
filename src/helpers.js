@@ -25,7 +25,7 @@ exports.debounce = function debounce (fn, wait) {
   }
 }
 
-exports.spliceArray = function (array, start, removedCount, insertedItems = []) {
+exports.spliceArray = function spliceArray(array, start, removedCount, insertedItems = []) {
   const oldLength = array.length
   const insertedCount = insertedItems.length
   removedCount = Math.min(removedCount, oldLength - start)
@@ -49,7 +49,7 @@ exports.spliceArray = function (array, start, removedCount, insertedItems = []) 
   }
 }
 
-exports.patchFromChanges = function (changes) {
+exports.patchFromChanges = function patchFromChanges(changes) {
   const patch = new Patch()
   for (let i = 0; i < changes.length; i++) {
     const {oldStart, oldEnd, oldText, newStart, newEnd, newText} = changes[i]
@@ -60,7 +60,7 @@ exports.patchFromChanges = function (changes) {
   return patch
 }
 
-exports.normalizePatchChanges = function (changes) {
+exports.normalizePatchChanges = function normalizePatchChanges(changes) {
   return changes.map((change) =>
     new TextChange(
       Range(change.oldStart, change.oldEnd),
@@ -70,7 +70,7 @@ exports.normalizePatchChanges = function (changes) {
   )
 }
 
-exports.extentForText = function (text) {
+exports.extentForText = function extentForText(text) {
   let lastLineStartIndex = 0
   let row = 0
   LF_REGEX.lastIndex = 0

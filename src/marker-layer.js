@@ -10,7 +10,7 @@ const SerializationVersion = 2;
 // Public: *Experimental:* A container for a related set of markers.
 
 // This API is experimental and subject to change on any release.
-module.exports = class MarkerLayer {
+class MarkerLayer {
   static deserialize(delegate, state) {
     var store;
     store = new MarkerLayer(delegate, 0);
@@ -343,95 +343,82 @@ module.exports = class MarkerLayer {
   Section: Private - TextBuffer interface
   */
   splice(start, oldExtent, newExtent) {
-    var invalidated;
-    invalidated = this.index.splice(start, oldExtent, newExtent);
-    return invalidated.touch.forEach((id) => {
-      var marker, ref;
-      marker = this.markersById[id];
-      if ((ref = invalidated[marker.getInvalidationStrategy()]) != null ? ref.has(id) : void 0) {
+    let invalidated = this.index.splice(start, oldExtent, newExtent);
+    for (let id of invalidated.touch) {
+      let marker = this.markersById[id];
+      if (invalidated[marker.getInvalidationStrategy()]?.has(id)) {
         if (this.destroyInvalidatedMarkers) {
-          return marker.destroy();
+          marker.destroy();
         } else {
-          return marker.valid = false;
+          marker.valid = false;
         }
       }
-    });
+    }
   }
 
   restoreFromSnapshot(snapshots, alwaysCreate) {
-    var existingMarkerIds, i, id, j, len, len1, marker, newMarker, range, results, snapshot, snapshotIds;
-    if (snapshots == null) {
-      return;
-    }
-    snapshotIds = Object.keys(snapshots);
-    existingMarkerIds = Object.keys(this.markersById);
-    for (i = 0, len = snapshotIds.length; i < len; i++) {
-      id = snapshotIds[i];
-      snapshot = snapshots[id];
+    if (snapshots == null) return;
+
+    let snapshotIds = Object.keys(snapshots);
+    let existingMarkerIds = Object.keys(this.markersById);
+
+    for (let id of snapshotIds) {
+      let snapshot = snapshots[id];
       if (alwaysCreate) {
         this.createMarker(snapshot.range, snapshot, true);
         continue;
       }
-      if (marker = this.markersById[id]) {
+      let marker = this.markersById[id];
+      if (marker) {
         marker.update(marker.getRange(), snapshot, true, true);
       } else {
-        ({marker} = snapshot);
+        marker = snapshot.marker;
         if (marker) {
           this.markersById[marker.id] = marker;
-          ({range} = snapshot);
+          let { range } = snapshot;
           this.index.insert(marker.id, range.start, range.end);
           marker.update(marker.getRange(), snapshot, true, true);
           if (this.emitCreateMarkerEvents) {
             this.emitter.emit('did-create-marker', marker);
           }
         } else {
-          newMarker = this.createMarker(snapshot.range, snapshot, true);
+          this.createMarker(snapshot.range, snapshot, true);
         }
       }
     }
-    results = [];
-    for (j = 0, len1 = existingMarkerIds.length; j < len1; j++) {
-      id = existingMarkerIds[j];
-      if ((marker = this.markersById[id]) && (snapshots[id] == null)) {
-        results.push(marker.destroy(true));
-      } else {
-        results.push(void 0);
+
+    for (let id of existingMarkerIds) {
+      let marker = this.markersById[id];
+      if (marker && !snapshots[id]) {
+        marker.destroy(true);
       }
     }
-    return results;
   }
 
   createSnapshot() {
-    var i, id, len, marker, ranges, ref, result;
-    result = {};
-    ranges = this.index.dump();
-    ref = Object.keys(this.markersById);
-    for (i = 0, len = ref.length; i < len; i++) {
-      id = ref[i];
-      marker = this.markersById[id];
+    let result = {};
+    let ranges = this.index.dump();
+    for (let id of Object.keys(this.markersById)) {
+      let marker = this.markersById[id];
       result[id] = marker.getSnapshot(Range.fromObject(ranges[id]));
     }
     return result;
   }
 
   emitChangeEvents(snapshot) {
-    return this.markersWithChangeListeners.forEach(function(marker) {
-      var ref;
+    this.markersWithChangeListeners.forEach(function(marker) {
       if (!marker.isDestroyed()) { // event handlers could destroy markers
-        return marker.emitChangeEvent(snapshot != null ? (ref = snapshot[marker.id]) != null ? ref.range : void 0 : void 0, true, false);
+        return marker.emitChangeEvent(snapshot?.[marker.id]?.range, true, false);
       }
     });
   }
 
   serialize() {
-    var i, id, len, marker, markersById, ranges, ref, snapshot;
-    ranges = this.index.dump();
-    markersById = {};
-    ref = Object.keys(this.markersById);
-    for (i = 0, len = ref.length; i < len; i++) {
-      id = ref[i];
-      marker = this.markersById[id];
-      snapshot = marker.getSnapshot(Range.fromObject(ranges[id]), false);
+    let ranges = this.index.dump();
+    let markersById = {};
+    for (let id of Object.keys(this.markersById)) {
+      let marker = this.markersById[id];
+      let snapshot = marker.getSnapshot(Range.fromObject(ranges[id]), false);
       markersById[id] = snapshot;
     }
     return {
@@ -445,7 +432,7 @@ module.exports = class MarkerLayer {
   }
 
   deserialize(state) {
-    var id, markerState, range, ref;
+    // var id, markerState, range, ref;
     if (state.version !== SerializationVersion) {
       return;
     }
@@ -456,13 +443,11 @@ module.exports = class MarkerLayer {
       this.delegate.registerSelectionsMarkerLayer(this);
     }
     this.persistent = state.persistent;
-    ref = state.markersById;
-    for (id in ref) {
-      markerState = ref[id];
-      range = Range.fromObject(markerState.range);
+    for (let [id, markerState] of Object.entries(state.markersById)) {
+      let range = Range.fromObject(markerState.range);
       // `markerState` is frozen, so instead of deleting its `range` we'll
       // create a new object and copy all properties _except_ `range`.
-      let { range: oldRange, ...params } = markerState
+      let { range: oldRange, ...params } = markerState;
       this.addMarker(id, range, { ...params });
     }
   }
@@ -481,10 +466,10 @@ module.exports = class MarkerLayer {
       this.markersWithChangeListeners.delete(marker);
       this.markersWithDestroyListeners.delete(marker);
       this.displayMarkerLayers.forEach(function(displayMarkerLayer) {
-        return displayMarkerLayer.destroyMarker(marker.id);
+        displayMarkerLayer.destroyMarker(marker.id);
       });
       if (!suppressMarkerLayerUpdateEvents) {
-        return this.delegate.markersUpdated(this);
+        this.delegate.markersUpdated(this);
       }
     }
   }
@@ -511,8 +496,7 @@ module.exports = class MarkerLayer {
 
   setMarkerRange(id, range) {
     id = parseInt(id);
-    var end, start;
-    ({start, end} = Range.fromObject(range));
+    let {start, end} = Range.fromObject(range);
     start = this.delegate.clipPosition(start);
     end = this.delegate.clipPosition(end);
     this.index.remove(id);
@@ -524,14 +508,13 @@ module.exports = class MarkerLayer {
   }
 
   createMarker(range, params, suppressMarkerLayerUpdateEvents = false) {
-    var id, marker, ref;
-    id = this.delegate.getNextMarkerId();
-    marker = this.addMarker(id, range, params);
+    let id = this.delegate.getNextMarkerId();
+    let marker = this.addMarker(id, range, params);
     this.delegate.markerCreated(this, marker);
     if (!suppressMarkerLayerUpdateEvents) {
       this.delegate.markersUpdated(this);
     }
-    marker.trackDestruction = (ref = this.trackDestructionInOnDidCreateMarkerCallbacks) != null ? ref : false;
+    marker.trackDestruction = this.trackDestructionInOnDidCreateMarkerCallbacks ?? false;
     if (this.emitCreateMarkerEvents) {
       this.emitter.emit('did-create-marker', marker);
     }
@@ -557,7 +540,7 @@ module.exports = class MarkerLayer {
 
 };
 
-const filterSet = function(set1, set2) {
+function filterSet(set1, set2) {
   if (set1) {
     intersectSet(set1, set2);
     return set1;
@@ -565,3 +548,5 @@ const filterSet = function(set1, set2) {
     return set2;
   }
 };
+
+module.exports = MarkerLayer;

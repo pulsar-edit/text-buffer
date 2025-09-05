@@ -1,10 +1,3 @@
-/*
- * decaffeinate suggestions:
- * DS102: Remove unnecessary code created because of implicit returns
- * DS207: Consider shorter variations of null checks
- * Full docs: https://github.com/decaffeinate/decaffeinate/blob/main/docs/suggestions.md
- */
-let DisplayMarker;
 const {Emitter} = require('event-kit');
 
 // Essential: Represents a buffer annotation that remains logically stationary
@@ -46,8 +39,7 @@ const {Emitter} = require('event-kit');
 //   start or start at the marker's end. This is the most fragile strategy.
 //
 // See {TextBuffer::markRange} for usage.
-module.exports =
-(DisplayMarker = class DisplayMarker {
+class DisplayMarker {
   /*
   Section: Construction and Destruction
   */
@@ -65,7 +57,7 @@ module.exports =
   // destroyed, a marker cannot be restored by undo/redo operations.
   destroy() {
     if (!this.isDestroyed()) {
-      return this.bufferMarker.destroy();
+      this.bufferMarker.destroy();
     }
   }
 
@@ -74,7 +66,7 @@ module.exports =
     this.layer.didDestroyMarker(this);
     this.emitter.dispose();
     this.emitter.clear();
-    return this.bufferMarkerSubscription?.dispose();
+    this.bufferMarkerSubscription?.dispose();
   }
 
   // Essential: Creates and returns a new {DisplayMarker} with the same properties as
@@ -461,4 +453,6 @@ module.exports =
 
     return this.emitter.emit('did-change', changeEvent);
   }
-});
+}
+
+module.exports = DisplayMarker;

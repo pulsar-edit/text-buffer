@@ -1,11 +1,4 @@
-// TODO: This file was created by bulk-decaffeinate.
-// Sanity-check the conversion and remove this comment.
-/*
- * decaffeinate suggestions:
- * DS102: Remove unnecessary code created because of implicit returns
- * Full docs: https://github.com/decaffeinate/decaffeinate/blob/main/docs/suggestions.md
- */
-const setEqual = function(a, b) {
+function setEqual(a, b) {
   let next;
   if (a.size !== b.size) { return false; }
   const iterator = a.values();
@@ -13,18 +6,34 @@ const setEqual = function(a, b) {
     if (!b.has(next.value)) { return false; }
   }
   return true;
-};
+}
 
-const subtractSet = function(set, valuesToRemove) {
+function subtractSet(set, valuesToRemove) {
   if (set.size > valuesToRemove.size) {
-    return valuesToRemove.forEach(value => set.delete(value));
+    for (let value of valuesToRemove) {
+      set.delete(value);
+    }
   } else {
-    return set.forEach(function(value) { if (valuesToRemove.has(value)) { return set.delete(value); } });
+    for (let value of set) {
+      if (valuesToRemove.has(value)) {
+        set.delete(value);
+      }
+    }
   }
-};
+}
 
-const addSet = (set, valuesToAdd) => valuesToAdd.forEach(value => set.add(value));
+function addSet (set, valuesToAdd) {
+  for (let value of valuesToAdd) {
+    set.add(value);
+  }
+}
 
-const intersectSet = (set, other) => set.forEach(function(value) { if (!other.has(value)) { return set.delete(value); } });
+function intersectSet (set, other) {
+  for (let value of set) {
+    if (!other.has(value)) {
+      set.delete(value);
+    }
+  }
+}
 
 module.exports = {setEqual, subtractSet, addSet, intersectSet};

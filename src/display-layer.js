@@ -9,7 +9,6 @@ const ScreenLineBuilder = require('./screen-line-builder')
 const {spliceArray} = require('./helpers')
 const {MAX_BUILT_IN_SCOPE_ID} = require('./constants')
 
-module.exports =
 class DisplayLayer {
   constructor (id, buffer, params = {}) {
     this.id = id
@@ -1253,3 +1252,5 @@ const NullDeadline = {
   didTimeout: false,
   timeRemaining () { return Infinity }
 }
+
+module.exports = DisplayLayer

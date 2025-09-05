@@ -1,12 +1,3 @@
-/*
- * decaffeinate suggestions:
- * DS101: Remove unnecessary use of Array.from
- * DS102: Remove unnecessary code created because of implicit returns
- * DS205: Consider reworking code to avoid use of IIFEs
- * DS207: Consider shorter variations of null checks
- * Full docs: https://github.com/decaffeinate/decaffeinate/blob/main/docs/suggestions.md
- */
-let DefaultHistoryProvider;
 const {Patch} = require('superstring')
 const MarkerLayer = require('./marker-layer');
 const {traversal} = require('./point-helpers');
@@ -51,8 +42,7 @@ class Transaction {
 }
 
 // Manages undo/redo for {TextBuffer}
-module.exports =
-(DefaultHistoryProvider = class DefaultHistoryProvider {
+class DefaultHistoryProvider {
   constructor(buffer) {
     this.buffer = buffer;
     this.maxUndoEntries = this.buffer.maxUndoEntries;
@@ -68,7 +58,7 @@ module.exports =
   }
 
   groupChangesSinceCheckpoint(checkpointId, options) {
-    const deleteCheckpoint = options?.deleteCheckpoint != null ? options?.deleteCheckpoint : false;
+    const deleteCheckpoint = options?.deleteCheckpoint ?? false;
     const markerSnapshotAfter = options?.markers;
     let checkpointIndex = null;
     let markerSnapshotBefore = null;
@@ -186,7 +176,7 @@ module.exports =
 
   enforceUndoStackSizeLimit() {
     if (this.undoStack.length > this.maxUndoEntries) {
-      return this.undoStack.splice(0, this.undoStack.length - this.maxUndoEntries);
+      this.undoStack.splice(0, this.undoStack.length - this.maxUndoEntries);
     }
   }
 
@@ -203,19 +193,19 @@ module.exports =
     if (groupingInterval === 0) { return; }
 
     if (previousEntry instanceof Transaction && topEntry.shouldGroupWith(previousEntry)) {
-      return this.undoStack.splice(this.undoStack.length - 2, 2, topEntry.groupWith(previousEntry));
+      this.undoStack.splice(this.undoStack.length - 2, 2, topEntry.groupWith(previousEntry));
     }
   }
 
   pushChange({newStart, oldExtent, newExtent, oldText, newText}) {
     const patch = new Patch;
     patch.splice(newStart, oldExtent, newExtent, oldText, newText);
-    return this.pushPatch(patch);
+    this.pushPatch(patch);
   }
 
   pushPatch(patch) {
     this.undoStack.push(patch);
-    return this.clearRedoStack();
+    this.clearRedoStack();
   }
 
   undo() {
@@ -248,7 +238,12 @@ module.exports =
     }
 
     if (spliceIndex != null) {
-      this.redoStack.push(...Array.from(this.undoStack.splice(spliceIndex).reverse() || []));
+      // This feels strange, but what it actually does is remove N elements
+      // from the undo stack in place (as is expected)… and then the `reverse`
+      // is applied to the items that were removed from the stack. That's
+      // appropriate, since they're suppopsed to flip their order when going
+      // onto the redo stack.
+      this.redoStack.push(...this.undoStack.splice(spliceIndex).reverse() || []);
       return {
         textUpdates: patch.getChanges(),
         markers: snapshotBelow
@@ -294,7 +289,12 @@ module.exports =
     }
 
     if (spliceIndex != null) {
-      this.undoStack.push(...Array.from(this.redoStack.splice(spliceIndex).reverse() || []));
+      // This feels strange, but what it actually does is remove N elements
+      // from the redo stack in place (as is expected)… and then the `reverse`
+      // is applied to the items that were removed from the stack. That's
+      // appropriate, since they're suppopsed to flip their order when going
+      // onto the undo stack.
+      this.undoStack.push(...this.redoStack.splice(spliceIndex).reverse() || []);
       return {
         textUpdates: patch.getChanges(),
         markers: snapshotBelow
@@ -343,15 +343,15 @@ module.exports =
 
   clear() {
     this.clearUndoStack();
-    return this.clearRedoStack();
+    this.clearRedoStack();
   }
 
   clearUndoStack() {
-    return this.undoStack.length = 0;
+    this.undoStack.length = 0;
   }
 
   clearRedoStack() {
-    return this.redoStack.length = 0;
+    this.redoStack.length = 0;
   }
 
   toString() {
@@ -389,7 +389,7 @@ module.exports =
     this.nextCheckpointId = state.nextCheckpointId;
     this.maxUndoEntries = state.maxUndoEntries;
     this.undoStack = this.deserializeStack(state.undoStack);
-    return this.redoStack = this.deserializeStack(state.redoStack);
+    this.redoStack = this.deserializeStack(state.redoStack);
   }
 
   getSnapshot(maxEntries) {
@@ -470,68 +470,64 @@ module.exports =
   }
 
   serializeStack(stack, options) {
-    return (() => {
-      const result = [];
-      for (let entry of stack) {
-        switch (entry.constructor) {
-          case Checkpoint:
-            result.push({
-              type: 'checkpoint',
-              id: entry.id,
-              snapshot: this.serializeSnapshot(entry.snapshot, options),
-              isBarrier: entry.isBarrier
-            });
-            break;
-          case Transaction:
-            result.push({
-              type: 'transaction',
-              markerSnapshotBefore: this.serializeSnapshot(entry.markerSnapshotBefore, options),
-              markerSnapshotAfter: this.serializeSnapshot(entry.markerSnapshotAfter, options),
-              patch: entry.patch.serialize().toString('base64')
-            });
-            break;
-          case Patch:
-            result.push({
-              type: 'patch',
-              data: entry.serialize().toString('base64')
-            });
-            break;
-          default:
-            throw new Error(`Unexpected undoStack entry type during serialization: ${entry.constructor.name}`);
-        }
+    const result = [];
+    for (let entry of stack) {
+      switch (entry.constructor) {
+        case Checkpoint:
+          result.push({
+            type: 'checkpoint',
+            id: entry.id,
+            snapshot: this.serializeSnapshot(entry.snapshot, options),
+            isBarrier: entry.isBarrier
+          });
+          break;
+        case Transaction:
+          result.push({
+            type: 'transaction',
+            markerSnapshotBefore: this.serializeSnapshot(entry.markerSnapshotBefore, options),
+            markerSnapshotAfter: this.serializeSnapshot(entry.markerSnapshotAfter, options),
+            patch: entry.patch.serialize().toString('base64')
+          });
+          break;
+        case Patch:
+          result.push({
+            type: 'patch',
+            data: entry.serialize().toString('base64')
+          });
+          break;
+        default:
+          throw new Error(`Unexpected undoStack entry type during serialization: ${entry.constructor.name}`);
       }
-      return result;
-    })();
+    }
+    return result;
   }
 
   deserializeStack(stack) {
-    return (() => {
-      const result = [];
-      for (let entry of stack) {
-        switch (entry.type) {
-          case 'checkpoint':
-            result.push(new Checkpoint(
-              entry.id,
-              MarkerLayer.deserializeSnapshot(entry.snapshot),
-              entry.isBarrier
-            ));
-            break;
-          case 'transaction':
-            result.push(new Transaction(
-              MarkerLayer.deserializeSnapshot(entry.markerSnapshotBefore),
-              Patch.deserialize(Buffer.from(entry.patch, 'base64')),
-              MarkerLayer.deserializeSnapshot(entry.markerSnapshotAfter)
-            ));
-            break;
-          case 'patch':
-            result.push(Patch.deserialize(Buffer.from(entry.data, 'base64')));
-            break;
-          default:
-            throw new Error(`Unexpected undoStack entry type during deserialization: ${entry.type}`);
-        }
+    let result = [];
+    for (let entry of stack) {
+      switch (entry.type) {
+        case 'checkpoint':
+          result.push(new Checkpoint(
+            entry.id,
+            MarkerLayer.deserializeSnapshot(entry.snapshot),
+            entry.isBarrier
+          ));
+          break;
+        case 'transaction':
+          result.push(new Transaction(
+            MarkerLayer.deserializeSnapshot(entry.markerSnapshotBefore),
+            Patch.deserialize(Buffer.from(entry.patch, 'base64')),
+            MarkerLayer.deserializeSnapshot(entry.markerSnapshotAfter)
+          ));
+          break;
+        case 'patch':
+          result.push(Patch.deserialize(Buffer.from(entry.data, 'base64')));
+          break;
+        default:
+          throw new Error(`Unexpected undoStack entry type during deserialization: ${entry.type}`);
       }
-      return result;
-    })();
+    }
+    return result;
   }
 
   serializeSnapshot(snapshot, options) {
@@ -552,17 +548,21 @@ module.exports =
     }
     return serializedLayerSnapshots;
   }
-});
+}
 
-var snapshotFromCheckpoint = checkpoint => ({
-  type: 'checkpoint',
-  id: checkpoint.id,
-  markers: checkpoint.snapshot
-});
+function snapshotFromCheckpoint(checkpoint) {
+  return {
+    type: 'checkpoint',
+    id: checkpoint.id,
+    markers: checkpoint.snapshot
+  };
+}
 
-var checkpointFromSnapshot = ({id, markers}) => new Checkpoint(id, markers, false);
+function checkpointFromSnapshot ({id, markers}) {
+  return new Checkpoint(id, markers, false);
+}
 
-var snapshotFromTransaction = function(transaction) {
+function snapshotFromTransaction (transaction) {
   const changes = [];
   const iterable = transaction.patch.getChanges();
   for (let i = 0; i < iterable.length; i++) {
@@ -583,7 +583,11 @@ var snapshotFromTransaction = function(transaction) {
     markersBefore: transaction.markerSnapshotBefore,
     markersAfter: transaction.markerSnapshotAfter
   };
-};
+}
 
-var transactionFromSnapshot = ({changes, markersBefore, markersAfter}) => // TODO: Return raw patch if there's no markersBefore && markersAfter
-  new Transaction(markersBefore, patchFromChanges(changes), markersAfter);
+function transactionFromSnapshot ({changes, markersBefore, markersAfter}) {
+  // TODO: Return raw patch if there's no markersBefore && markersAfter
+  return new Transaction(markersBefore, patchFromChanges(changes), markersAfter);
+}
+
+module.exports = DefaultHistoryProvider;

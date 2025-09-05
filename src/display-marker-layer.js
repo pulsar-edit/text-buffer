@@ -1,8 +1,3 @@
-/*
- * decaffeinate suggestions:
- * DS102: Remove unnecessary code created because of implicit returns
- * Full docs: https://github.com/decaffeinate/decaffeinate/blob/main/docs/suggestions.md
- */
 const {Emitter, CompositeDisposable} = require('event-kit');
 const DisplayMarker = require('./display-marker');
 const Range = require('./range');
@@ -45,12 +40,12 @@ class DisplayMarkerLayer {
     this.displayLayer.didDestroyMarkerLayer(this.id);
 
     this.emitter.emit('did-destroy');
-    return this.emitter.clear();
+    this.emitter.clear();
   }
 
   // Public: Destroy all markers in this layer.
   clear() {
-    return this.bufferMarkerLayer.clear();
+    this.bufferMarkerLayer.clear();
   }
 
   didClearBufferMarkerLayer() {

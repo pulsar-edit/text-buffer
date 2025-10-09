@@ -16,6 +16,7 @@ jobs:
         os: [ubuntu-latest, macos-latest]
         node_arch:
           - x64
+      fail-fast: false
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v1

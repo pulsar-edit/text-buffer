@@ -973,6 +973,9 @@ describe('TextBuffer IO', () => {
       fs.writeFileSync(buffer.getPath(), 'abcde')
 
       const subscription = buffer.file.onDidChange(() => {
+        // `text-buffer` consumes this through a `debounce` helper. We don't,
+        // so we should manually ensure this handler runs only once.
+        if (subscription.disposed) return
         subscription.dispose()
         setTimeout(() => {
           expect(buffer.getText()).toBe('abcde')

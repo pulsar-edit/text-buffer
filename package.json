@@ -38,6 +38,8 @@
     "yargs": "^6.5.0"
   },
   "dependencies": {
+    "@pulsar-edit/pathwatcher": "^9.0.2",
+    "@pulsar-edit/superstring": "^3.0.4",
     "delegato": "^1.0.0",
     "diff": "^2.2.1",
     "emissary": "^1.0.0",
@@ -47,10 +49,8 @@
     "grim": "^2.0.2",
     "mkdirp": "^0.5.1",
     "serializable": "^1.0.3",
-    "superstring": "github:savetheclocktower/superstring#e5e848017f7a28fe250b45f8c7f8ed244371d33d",
     "underscore-plus": "^1.0.0",
-    "winattr": "^3.0.0",
-    "pathwatcher": "github:savetheclocktower/node-pathwatcher#649232b264940e27ff578f848d1ec9aa3ebb09b9"
+    "winattr": "^3.0.0"
   },
   "standard": {
     "env": {

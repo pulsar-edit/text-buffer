@@ -1,4 +1,4 @@
-const {Patch} = require('superstring')
+const {Patch} = require('@pulsar-edit/superstring')
 const {Emitter} = require('event-kit')
 const Point = require('./point')
 const Range = require('./range')

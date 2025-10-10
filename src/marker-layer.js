@@ -3,7 +3,7 @@ const {Emitter} = require('event-kit');
 const Point = require("./point");
 const Range = require("./range");
 const Marker = require("./marker");
-const {MarkerIndex} = require("superstring")
+const {MarkerIndex} = require("@pulsar-edit/superstring")
 const {intersectSet} = require("./set-helpers");
 const SerializationVersion = 2;
 
@@ -322,7 +322,7 @@ class MarkerLayer {
   //
   // * `callback` A {Function} that will be called with a {Marker} whenever a
   //   new marker is created.
-  // 
+  //
   // You should prefer {::onDidUpdate} when synchronous notifications aren't
   // absolutely necessary.
 

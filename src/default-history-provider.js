@@ -1,4 +1,4 @@
-const {Patch} = require('superstring')
+const {Patch} = require('@pulsar-edit/superstring')
 const MarkerLayer = require('./marker-layer');
 const {traversal} = require('./point-helpers');
 const {patchFromChanges} = require('./helpers');

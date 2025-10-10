@@ -1,11 +1,11 @@
 const {Emitter, CompositeDisposable} = require('event-kit')
-const {File} = require('pathwatcher')
+const {File} = require('@pulsar-edit/pathwatcher')
 const diff = require('diff')
 const _ = require('underscore-plus')
 const path = require('path')
 const crypto = require('crypto')
 const mkdirp = require('mkdirp')
-const {TextBuffer: NativeTextBuffer} = require('superstring');
+const {TextBuffer: NativeTextBuffer} = require('@pulsar-edit/superstring');
 const Point = require('./point')
 const Range = require('./range')
 const DefaultHistoryProvider = require('./default-history-provider')

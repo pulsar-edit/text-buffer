@@ -1,4 +1,4 @@
-const {Patch} = require('superstring')
+const {Patch} = require('@pulsar-edit/superstring')
 const Range = require('./range')
 const {traversal} = require('./point-helpers')
 

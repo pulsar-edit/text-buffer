@@ -5,7 +5,6 @@
   "main": "./src/text-buffer",
   "scripts": {
     "prepublish": "npm run clean",
-    "docs": "node script/generate-docs",
     "clean": "rimraf lib api.json",
     "test": "node script/test",
     "ci": "npm run test && npm run bench",
@@ -27,13 +26,11 @@
     "electron": "^30",
     "jasmine": "^2.4.1",
     "jasmine-core": "^2.4.1",
-    "joanna": "github:pulsar-edit/joanna",
     "json-diff": "^0.3.1",
     "random-seed": "^0.2.0",
     "regression": "^1.2.1",
     "rimraf": "~2.2.2",
     "standard": "^10.0.3",
-    "tello": "^1.0.7",
     "temp": "^0.8.3",
     "yargs": "^6.5.0"
   },

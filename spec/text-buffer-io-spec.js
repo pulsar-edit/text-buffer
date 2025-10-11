@@ -6,17 +6,21 @@ const {Disposable} = require('event-kit')
 const Point = require('../src/point')
 const Range = require('../src/range')
 const TextBuffer = require('../src/text-buffer')
-const {TextBuffer: NativeTextBuffer} = require('superstring')
+const {TextBuffer: NativeTextBuffer} = require('@pulsar-edit/superstring')
 const fsAdmin = require('fs-admin')
-const pathwatcher = require('pathwatcher')
+const pathwatcher = require('@pulsar-edit/pathwatcher')
 const winattr = require('winattr')
 
 process.on('unhandledRejection', console.error)
 
+async function wait (ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
 describe('TextBuffer IO', () => {
   let buffer, buffer2
 
-  afterEach(() => {
+  afterEach(async () => {
     if (buffer) buffer.destroy()
     if (buffer2) buffer2.destroy()
 
@@ -27,6 +31,10 @@ describe('TextBuffer IO', () => {
       }
       pathwatcher.closeAllWatchers()
     }
+    // `await` briefly to allow the file watcher to clean up. This is a
+    // `pathwatcher` requirement that we can fix by updating its API — but
+    // that's a can of worms we don't want to open yet.
+    await wait(10);
   })
 
   describe('.load', () => {
@@ -965,6 +973,9 @@ describe('TextBuffer IO', () => {
       fs.writeFileSync(buffer.getPath(), 'abcde')
 
       const subscription = buffer.file.onDidChange(() => {
+        // `text-buffer` consumes this through a `debounce` helper. We don't,
+        // so we should manually ensure this handler runs only once.
+        if (subscription.disposed) return
         subscription.dispose()
         setTimeout(() => {
           expect(buffer.getText()).toBe('abcde')

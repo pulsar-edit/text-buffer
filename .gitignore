@@ -1,7 +1,8 @@
+.DS_Store
+.tool-versions
 node_modules
 *.swp
 lib
 npm-debug.log
-.coffee
 api.json
 package-lock.json

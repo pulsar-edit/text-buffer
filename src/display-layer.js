@@ -1,4 +1,4 @@
-const {Patch} = require('superstring')
+const {Patch} = require('@pulsar-edit/superstring')
 const {Emitter} = require('event-kit')
 const Point = require('./point')
 const Range = require('./range')
@@ -9,7 +9,6 @@ const ScreenLineBuilder = require('./screen-line-builder')
 const {spliceArray} = require('./helpers')
 const {MAX_BUILT_IN_SCOPE_ID} = require('./constants')
 
-module.exports =
 class DisplayLayer {
   constructor (id, buffer, params = {}) {
     this.id = id
@@ -54,7 +53,14 @@ class DisplayLayer {
       this.rightmostScreenPosition = params.rightmostScreenPosition
       this.indexedBufferRowCount = params.indexedBufferRowCount
     } else {
-      this.spatialIndex = new Patch({mergeAdjacentHunks: false})
+      this.spatialIndex = new Patch({
+        // The `mergeAdjacentHunks` option in `superstring` was renamed to
+        // `mergeAdjacentChanges` at a certain point. In order to remain
+        // compatible with the broadest possible range of `superstring`
+        // dependencies, we pass both options here.
+        mergeAdjacentHunks: false,
+        mergeAdjacentChanges: false
+      })
       this.tabCounts = []
       this.screenLineLengths = []
       this.rightmostScreenPosition = Point(0, 0)
@@ -1246,3 +1252,5 @@ const NullDeadline = {
   didTimeout: false,
   timeRemaining () { return Infinity }
 }
+
+module.exports = DisplayLayer

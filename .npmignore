@@ -1,6 +1,5 @@
 spec
 script
-src
 .npmignore
 .DS_Store
 npm-debug.log

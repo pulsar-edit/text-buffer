@@ -1,6 +1,6 @@
 {
   "name": "@pulsar-edit/text-buffer",
-  "version": "14.0.0",
+  "version": "14.0.1",
   "description": "A container for large mutable strings with annotated regions",
   "main": "./src/text-buffer",
   "scripts": {

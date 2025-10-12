@@ -22,9 +22,8 @@ jobs:
         # Reasoning for this in `ci.yml`
         run: python3 -m pip install --break-system-packages setuptools
       - name: Install Dependencies
-        run: |
-          npm i
-      - run: |
-          npm run test:node
-          npm run test:native
-      - run: npm publish --access public
+        run: npm i
+      - name: Run tests
+        run: npm test
+      - name: Publish to NPM
+        run: npm publish --access public

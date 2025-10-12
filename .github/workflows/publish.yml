@@ -23,7 +23,7 @@ jobs:
         run: python3 -m pip install --break-system-packages setuptools
       - name: Install Dependencies
         run: |
-          npm ci
+          npm i
       - run: |
           npm run test:node
           npm run test:native

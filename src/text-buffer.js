@@ -102,6 +102,15 @@ class TextBuffer {
     this.cachedHasAstral = null
     this._emittedWillChangeEvent = false
 
+    // Whether a buffer has ever had a backing file, whether or not it exists
+    // now.
+    this.didHaveFileOnDisk = false
+
+    // When a buffer's backing file is deleted while the file is unmodified,
+    // this trait flips to `true`… and then flips back to `false` if any
+    // further edits are made.
+    this.retainsUnmodifiedTraitAfterDeletion = false
+
     this.setEncoding(params.encoding)
     this.setPreferredLineEnding(params.preferredLineEnding)
 
@@ -524,6 +533,11 @@ class TextBuffer {
   //
   // Returns a {Boolean}.
   isModified () {
+    if (this.isDeleted()) {
+      // We typically consider a deleted file to be modified… unless it was
+      // unmodified at the time of deletion and has not been modified since.
+      return !this.retainsUnmodifiedTraitAfterDeletion
+    }
     if (this.file) {
       return !this.file.existsSync() || this.buffer.isModified()
     } else {
@@ -531,8 +545,20 @@ class TextBuffer {
     }
   }
 
-  // Public: Determine if the in-memory contents of the buffer conflict with the
-  // on-disk contents of its associated file.
+  // Public: Determine if the buffer is in a deleted state — meaning that it
+  // was previously backed by a file on disk, but is no longer.
+  isDeleted () {
+    let hasNoFile = !this.file || !this.file.existsSync()
+    return hasNoFile && this.didHaveFileOnDisk
+  }
+
+  // Public: Determine if the in-memory contents of the buffer conflict with
+  // the on-disk contents of its associated file.
+  //
+  // This happens if the contents of a buffer’s backing file change while the
+  // editor has uncommitted changes. Those uncommitted changes build upon a
+  // state that is now stale; if those changes were committed to disk, it could
+  // clobber the changes made by the external program.
   //
   // Returns a {Boolean}.
   isInConflict () {
@@ -845,6 +871,7 @@ class TextBuffer {
     if (undo != null) {
       Grim.deprecate('The `undo` option is deprecated. Call groupLastChanges() on the TextBuffer afterward instead.')
     }
+    this.retainsUnmodifiedTraitAfterDeletion = false
 
     if (this.transactCallDepth === 0) {
       const newRange = this.transact(() => this.setTextInRange(range, newText, {normalizeLineEndings}))
@@ -1929,6 +1956,7 @@ class TextBuffer {
 
       try {
         await this.buffer.save(destination, this.getEncoding())
+        this.didHaveFileOnDisk = true
       } catch (error) {
         if (error.code !== 'EACCES' || destination !== filePath) throw error
 
@@ -2100,6 +2128,8 @@ class TextBuffer {
     if (!options || !options.internal) {
       Grim.deprecate('The .load instance method is deprecated. Create a loaded buffer using TextBuffer.load(filePath) instead.')
     }
+
+    this.didHaveFileOnDisk = true
 
     const source = this.file instanceof File
       ? this.file.getPath()
@@ -2295,6 +2325,7 @@ class TextBuffer {
     if (this.file.onDidDelete) {
       this.fileSubscriptions.add(this.file.onDidDelete(() => {
         const modified = this.buffer.isModified()
+        this.retainsUnmodifiedTraitAfterDeletion = !modified
         this.emitter.emit('did-delete')
         if (!modified && this.shouldDestroyOnFileDelete()) {
           return this.destroy()

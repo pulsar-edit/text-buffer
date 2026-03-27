@@ -14,7 +14,7 @@ const winattr = require('winattr')
 process.on('unhandledRejection', console.error)
 
 async function wait (ms) {
-  return new Promise(r => setTimeout(r, ms));
+  return new Promise(r => setTimeout(r, ms))
 }
 
 describe('TextBuffer IO', () => {
@@ -34,7 +34,7 @@ describe('TextBuffer IO', () => {
     // `await` briefly to allow the file watcher to clean up. This is a
     // `pathwatcher` requirement that we can fix by updating its API — but
     // that's a can of worms we don't want to open yet.
-    await wait(10);
+    await wait(10)
   })
 
   describe('.load', () => {
@@ -581,8 +581,9 @@ describe('TextBuffer IO', () => {
   })
 
   describe('.isModified', () => {
+    let filePath
     beforeEach(async done => {
-      const filePath = temp.openSync('atom').path
+      filePath = temp.openSync('atom').path
       fs.writeFileSync(filePath, '')
       buffer = await TextBuffer.load(filePath)
       done()
@@ -607,9 +608,22 @@ describe('TextBuffer IO', () => {
         buffer.undo()
         buffer.undo()
         expect(buffer.isModified()).toBe(false)
+        expect(buffer.isDeleted()).toBe(false)
         await stopChangingPromise()
         expect(modifiedStatusChanges).toEqual([true, false])
         done()
+      })
+
+      describe('and the file is deleted', () => {
+        it('reports the modified status as true', async () => {
+          buffer.setText(`lorem ipsum`)
+          await buffer.save()
+          buffer.setText(`lorem ipsum dolor`)
+          fs.unlinkSync(filePath)
+          await wait(500)
+          expect(buffer.isModified()).toBe(true)
+          expect(buffer.isDeleted()).toBe(true)
+        })
       })
     })
 
@@ -627,6 +641,54 @@ describe('TextBuffer IO', () => {
         expect(modifiedStatusChanges).toEqual([false])
         done()
       })
+
+      describe('and the file is deleted', () => {
+        it('reports the modified status as false', async () => {
+          buffer.setText(`lorem ipsum`)
+          await buffer.save()
+          fs.unlinkSync(filePath)
+          await wait(500)
+          expect(buffer.isModified()).toBe(false)
+          expect(buffer.isDeleted()).toBe(true)
+        })
+
+        it('initially reports the modified status as false, but flips it back to true if the user makes further changes', async () => {
+          buffer.setText(`lorem ipsum`)
+          await buffer.save()
+          fs.unlinkSync(filePath)
+          await wait(500)
+          expect(buffer.isModified()).toBe(false)
+          expect(buffer.isDeleted()).toBe(true)
+
+          buffer.insert([0, 0], '! ')
+          expect(buffer.isModified()).toBe(true)
+          expect(buffer.isDeleted()).toBe(true)
+
+          // `isModified` should return `true` even if we revert the buffer's
+          // contents to what they were at the time of deletion.
+          buffer.setText(`lorem ipsum`)
+          expect(buffer.isModified()).toBe(true)
+          expect(buffer.isDeleted()).toBe(true)
+        })
+
+        describe('and re-saved', () => {
+          it('results in isModified and isDeleted no longer returning true', async () => {
+            buffer.setText(`lorem ipsum`)
+            await buffer.save()
+            fs.unlinkSync(filePath)
+            await wait(500)
+            buffer.insert([0, 0], '! ')
+            expect(buffer.isModified()).toBe(true)
+            expect(buffer.isDeleted()).toBe(true)
+
+            await buffer.saveAs(filePath)
+
+            expect(buffer.isModified()).toBe(false)
+            expect(buffer.isDeleted()).toBe(false)
+          })
+        })
+      })
+
     })
 
     describe('when the buffer is reloaded', () => {
@@ -1087,7 +1149,18 @@ describe('TextBuffer IO', () => {
           fs.removeSync(filePath)
           buffer.file.onDidDelete(() => {
             expect(buffer.getPath()).toBe(filePath)
-            expect(buffer.isModified()).toBeTruthy()
+            // `buffer.isModified` used to report `true` automatically whenever
+            // a buffer does not have a backing file. Now it depends on whether
+            // the file ever existed – and, if so, whether the buffer was in a
+            // modified state when the file was deleted.
+            //
+            // The narrow exception we're carving out is one where the file
+            // contents were in sync with the buffer contents at the moment of
+            // file deletion. If so, its `isModified=false` status will persist
+            // until even one edit is made, at which point it will flip back to
+            // `isModified=true` until the buffer is destroyed or once again
+            // saved to disk.
+            expect(buffer.isModified()).toBeFalsy()
             done()
           })
         })

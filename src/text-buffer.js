@@ -2273,9 +2273,20 @@ class TextBuffer {
         if (this.isModified()) {
           const source = this.file.getPath()
           if (!(await this.buffer.baseTextMatchesFile(source, this.getEncoding()))) {
+            // Emit `did-conflict` and take no other action. We will keep the
+            // current buffer contents so that the user's changes are not lost.
             this.emitter.emit('did-conflict')
+          } else {
+            // Despite being modified, we're once again in alignment with what
+            // is on disk. This file is not in conflict.
+            this.fileHasChangedSinceLastLoad = false
           }
         } else {
+          // This buffer was previously in sync with what was on disk, so we
+          // can update its contents to match the new contents on disk. By
+          // definition, this means there is no conflict, so we'll reset the
+          // appropriate flag.
+          this.fileHasChangedSinceLastLoad = false
           return this.load({internal: true})
         }
       }, this.fileChangeDelay)))

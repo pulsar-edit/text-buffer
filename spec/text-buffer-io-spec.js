@@ -408,6 +408,13 @@ describe('TextBuffer IO', () => {
         expect(buffer.isInConflict()).toBe(true)
         await buffer.save()
         expect(buffer.isInConflict()).toBe(false)
+        // Ensure we don't get flipped into conflicted status after the
+        // `onDidChange` handler comes through…
+        await wait(1000)
+        expect(buffer.isInConflict()).toBe(false)
+        buffer.setText('q')
+        // …and the buffer is modified again.
+        expect(buffer.isInConflict()).toBe(false)
         done()
       })
     })

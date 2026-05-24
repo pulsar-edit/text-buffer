@@ -539,8 +539,14 @@ class TextBuffer {
       return !this.retainsUnmodifiedTraitAfterDeletion
     }
     if (this.file) {
+      // Now that all deletion cases are weeded out, the main determination is
+      // whether the native buffer reports itself as modified — but we keep the
+      // `existsSync` check just to be thorough.
       return !this.file.existsSync() || this.buffer.isModified()
     } else {
+      // A buffer that never had any backing file on disk is always considered
+      // to be modified _unless_ it is completely empty. We should not be
+      // prompting users to save untitled buffers with empty contents.
       return this.buffer.getLength() > 0
     }
   }
@@ -600,17 +606,26 @@ class TextBuffer {
   //     can be used to prevent further calls to the callback.
   setFile (file) {
     if (!this.file && !file) return
-    if (file && file.getPath() === this.getPath()) return
+    let isExistingFile = file && file.getPath() === this.getPath()
 
     this.file = file
-    if (this.file) {
-      if (typeof this.file.setEncoding === 'function') {
-        this.file.setEncoding(this.getEncoding())
-      }
-      this.subscribeToFile()
+    if (this.file && !isExistingFile) {
+      this.file.setEncoding?.(this.getEncoding())
     }
-
-    this.emitter.emit('did-change-path', this.getPath())
+    if (
+      this.shouldResubscribeIfPathMatches &&
+      this.file.getPath() === this.shouldResubscribeIfPathMatches) {
+    } {
+      this.subscribeToFile();
+      this.shouldResubscribeIfPathMatches = undefined;
+    }
+    if (!isExistingFile) {
+      // The act of setting a new file (even calling this method with
+      // `undefined`) should clear this buffer's deleted state.
+      this.didHaveFileOnDisk = false;
+      this.shouldResubscribeIfPathMatches = undefined;
+      this.emitter.emit('did-change-path', this.getPath())
+    }
   }
 
   // Public: Sets the character set encoding for this buffer.
@@ -871,7 +886,12 @@ class TextBuffer {
     if (undo != null) {
       Grim.deprecate('The `undo` option is deprecated. Call groupLastChanges() on the TextBuffer afterward instead.')
     }
-    this.retainsUnmodifiedTraitAfterDeletion = false
+    if (this.retainsUnmodifiedTraitAfterDeletion) {
+      this.retainsUnmodifiedTraitAfterDeletion = false
+      // Flipping this to `false` will result in a change to the "modified"
+      // state.
+      this.emitModifiedStatusChanged(this.isModified())
+    }
 
     if (this.transactCallDepth === 0) {
       const newRange = this.transact(() => this.setTextInRange(range, newText, {normalizeLineEndings}))
@@ -2031,7 +2051,7 @@ class TextBuffer {
   // Returns a language mode {Object} (See {TextBuffer::setLanguageMode} for its interface).
   getLanguageMode () { return this.languageMode }
 
-  // Experimental: Set the LanguageMode for this buffer.
+  // Experimental: Set the language mode for this buffer.
   //
   // * `languageMode` - an {Object} with the following methods:
   //   * `getLanguageId` - A {Function} that returns a {String} identifying the language.
@@ -2324,14 +2344,32 @@ class TextBuffer {
 
     if (this.file.onDidDelete) {
       this.fileSubscriptions.add(this.file.onDidDelete(() => {
+        // At this point, asking `isModified` of the native buffer will deliver
+        // an accurate result that does not care about whether the file still
+        // exists on disk.
         const modified = this.buffer.isModified()
         this.retainsUnmodifiedTraitAfterDeletion = !modified
         this.emitter.emit('did-delete')
+        // We want to keep the `file` property around so that the user can save
+        // this file again without having to pick a new path. But if that
+        // happens, we'll need to resubscribe to file events, despite already
+        // having subscribed the first time around.
+        //
+        // We can do this by calling `subscribeToFile` every time we call
+        // `setFile`, but that will create a lot of churn. Instead, we should
+        // keep track of this exact scenario and call `subscribeToFile` again
+        // only when we need to.
+        this.shouldResubscribeIfPathMatches = this.getPath();
         if (!modified && this.shouldDestroyOnFileDelete()) {
           return this.destroy()
         } else {
-          return this.emitModifiedStatusChanged(true)
+          return this.emitModifiedStatusChanged(this.isModified())
         }
+        // We don't set `this.file` to `null` because we still have a
+        // _theoretical_ file, even if it's no longer present on disk. In this
+        // scenario, we can re-commit the file to disk at its previous path
+        // with a simple "Save" command. If we nulled out `file`, the editor
+        // would prompt the user again about a save destination.
       }))
     }
 

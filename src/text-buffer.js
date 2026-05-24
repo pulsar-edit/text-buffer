@@ -568,7 +568,9 @@ class TextBuffer {
   //
   // Returns a {Boolean}.
   isInConflict () {
-    return this.isModified() && this.fileHasChangedSinceLastLoad
+    // Deleted files are automatically in conflict if they consider themselves
+    // modified.
+    return this.isModified() && (this.fileHasChangedSinceLastLoad || this.isDeleted())
   }
 
   // Public: Get the path of the associated file.

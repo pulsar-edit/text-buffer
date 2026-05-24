@@ -455,11 +455,15 @@ describe('TextBuffer IO', () => {
         // Modify the file after the save has been asynchronously initiated
         buffer.onDidSave(() => buffer.append('!'))
 
-        const subscription = buffer.file.onDidChange(() => setTimeout(() => {
-          subscription.dispose()
-          expect(events.length).toBe(0)
-          done()
-        }, buffer.fileChangeDelay))
+        let subscription
+        let handler = () => {
+          setTimeout(() => {
+            subscription?.dispose()
+            expect(events.length).toBe(0)
+            done()
+          }, buffer.fileChangeDelay)
+        }
+        buffer.file.onDidChange(handler)
       })
     })
 
@@ -691,6 +695,55 @@ describe('TextBuffer IO', () => {
 
     })
 
+    describe('when the buffer’s file is deleted', () => {
+      it('does not report `isModified` as `true` unless the buffer was modified at time of deletion', async () => {
+        expect(buffer.isModified()).toBe(false)
+        fs.unlinkSync(filePath)
+        await wait(500)
+        expect(buffer.isDeleted()).toBe(true)
+        expect(buffer.isModified()).toBe(false)
+
+        await wait(500)
+        await buffer.save()
+        expect(buffer.isDeleted()).toBe(false)
+        expect(buffer.isModified()).toBe(false)
+
+        buffer.insert([0, 0], 'hi')
+        expect(buffer.isModified()).toBe(true)
+        fs.unlinkSync(filePath)
+        await wait(500)
+        expect(buffer.isDeleted()).toBe(true)
+        expect(buffer.isModified()).toBe(true)
+      })
+    })
+
+    describe('when the buffer is re-saved after deletion', () => {
+      it('stops reporting the file as deleted or modified', async done => {
+        buffer.insert([0, 0], 'hi')
+        expect(buffer.isModified()).toBe(true)
+
+        fs.unlinkSync(filePath)
+        await wait(500)
+        expect(buffer.isDeleted()).toBe(true)
+        expect(buffer.isModified()).toBe(true)
+
+        await wait(500)
+
+        await buffer.save()
+        expect(buffer.isDeleted()).toBe(false)
+        expect(buffer.isModified()).toBe(false)
+
+        buffer.insert([0, 0], 'hi')
+        await wait(500)
+        fs.unlinkSync(filePath)
+        await wait(500)
+        expect(buffer.isDeleted()).toBe(true)
+        expect(buffer.isModified()).toBe(true)
+        done()
+      })
+
+    })
+
     describe('when the buffer is reloaded', () => {
       it('reports the modified status changing to false', done => {
         const modifiedStatusChanges = []
@@ -905,14 +958,17 @@ describe('TextBuffer IO', () => {
     })
 
     it('emits a conflict event if the buffer is modified and backed by a custom file', async done => {
+      fs.writeFileSync(buffer.getPath(), 'abcde')
       const file = new ReverseCaseFile(filePath)
       buffer.setFile(file)
+
+      // `ReverseCaseFile` uses `fs.watch` to set up file-watching. This
+      // built-in method is fast, but not instantaneous.
+      await wait(process.env.CI ? 500 : 200)
 
       buffer.append('f')
       expect(buffer.getText()).toBe('abcdef')
       expect(buffer.isModified()).toBe(true)
-
-      fs.writeFileSync(buffer.getPath(), '  abc')
 
       const subscription = buffer.onDidConflict(() => {
         subscription.dispose()
@@ -921,6 +977,8 @@ describe('TextBuffer IO', () => {
         expect(buffer.isInConflict()).toBe(true)
         done()
       })
+
+      fs.writeFileSync(buffer.getPath(), '  abc')
     })
 
     it('updates the buffer and its markers and notifies change observers if the buffer is unmodified', async done => {
@@ -1179,11 +1237,12 @@ describe('TextBuffer IO', () => {
       expect(fs.existsSync(buffer.getPath())).toBeTruthy()
       expect(buffer.isInConflict()).toBeFalsy()
 
-      fs.writeFileSync(filePath, 'moo')
       buffer.onDidChange(() => {
         expect(buffer.getText()).toBe('moo')
         done()
       })
+      await wait(process.env.CI ? 200 : 20)
+      fs.writeFileSync(filePath, 'moo')
     })
   })
 })

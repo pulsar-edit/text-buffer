@@ -35,7 +35,7 @@
     "yargs": "^6.5.0"
   },
   "dependencies": {
-    "@pulsar-edit/pathwatcher": "^9.0.2",
+    "@pulsar-edit/pathwatcher": "^9.0.3",
     "@pulsar-edit/superstring": "^3.0.4",
     "delegato": "^1.0.0",
     "diff": "^2.2.1",

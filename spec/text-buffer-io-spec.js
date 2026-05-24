@@ -463,7 +463,7 @@ describe('TextBuffer IO', () => {
             done()
           }, buffer.fileChangeDelay)
         }
-        buffer.file.onDidChange(handler)
+        subscription = buffer.file.onDidChange(handler)
       })
     })
 

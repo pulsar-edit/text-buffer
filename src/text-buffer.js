@@ -5,7 +5,7 @@ const _ = require('underscore-plus')
 const path = require('path')
 const crypto = require('crypto')
 const mkdirp = require('mkdirp')
-const {TextBuffer: NativeTextBuffer} = require('@pulsar-edit/superstring');
+const {TextBuffer: NativeTextBuffer} = require('@pulsar-edit/superstring')
 const Point = require('./point')
 const Range = require('./range')
 const DefaultHistoryProvider = require('./default-history-provider')
@@ -101,6 +101,15 @@ class TextBuffer {
     this.loadCount = 0
     this.cachedHasAstral = null
     this._emittedWillChangeEvent = false
+
+    // Whether a buffer has ever had a backing file, whether or not it exists
+    // now.
+    this.didHaveFileOnDisk = false
+
+    // When a buffer's backing file is deleted while the file is unmodified,
+    // this trait flips to `true`… and then flips back to `false` if any
+    // further edits are made.
+    this.retainsUnmodifiedTraitAfterDeletion = false
 
     this.setEncoding(params.encoding)
     this.setPreferredLineEnding(params.preferredLineEnding)
@@ -304,22 +313,24 @@ class TextBuffer {
     return this.emitter.on('will-change', callback)
   }
 
-  // Public: Invoke the given callback synchronously when a transaction finishes
-  // with a list of all the changes in the transaction.
+  // Public: Invoke the given callback synchronously when a transaction
+  // finishes with a list of all the changes in the transaction.
   //
   // * `callback` {Function} to be called when a transaction in which textual
   //   changes occurred is completed.
   //   * `event` {Object} with the following keys:
-  //     * `oldRange` The smallest combined {Range} containing all of the old text.
-  //     * `newRange` The smallest combined {Range} containing all of the new text.
+  //     * `oldRange` The smallest combined {Range} containing all of the old
+  //       text.
+  //     * `newRange` The smallest combined {Range} containing all of the new
+  //       text.
   //     * `changes` {Array} of {Object}s summarizing the aggregated changes
   //       that occurred during the transaction. See *Working With Aggregated
   //       Changes* in the description of the {TextBuffer} class for details.
   //       * `oldRange` The {Range} of the deleted text in the contents of the
-  //         buffer as it existed *before* the batch of changes reported by this
-  //         event.
-  //       * `newRange`: The {Range} of the inserted text in the current contents
-  //         of the buffer.
+  //         buffer as it existed *before* the batch of changes reported by
+  //         this event.
+  //       * `newRange`: The {Range} of the inserted text in the current
+  //         contents of the buffer.
   //       * `oldText`: A {String} representing the deleted text.
   //       * `newText`: A {String} representing the inserted text.
   //
@@ -347,10 +358,10 @@ class TextBuffer {
   //       changes. See *Working With Aggregated Changes* in the description of
   //       the {TextBuffer} class for details.
   //       * `oldRange` The {Range} of the deleted text in the contents of the
-  //         buffer as it existed *before* the batch of changes reported by this
-  //         event.
-  //       * `newRange`: The {Range} of the inserted text in the current contents
-  //         of the buffer.
+  //         buffer as it existed *before* the batch of changes reported by
+  //         this event.
+  //       * `newRange`: The {Range} of the inserted text in the current
+  //         contents of the buffer.
   //       * `oldText`: A {String} representing the deleted text.
   //       * `newText`: A {String} representing the inserted text.
   //
@@ -524,19 +535,44 @@ class TextBuffer {
   //
   // Returns a {Boolean}.
   isModified () {
+    if (this.isDeleted()) {
+      // We typically consider a deleted file to be modified… unless it was
+      // unmodified at the time of deletion and has not been modified since.
+      return !this.retainsUnmodifiedTraitAfterDeletion
+    }
     if (this.file) {
+      // Now that all deletion cases are weeded out, the main determination is
+      // whether the native buffer reports itself as modified — but we keep the
+      // `existsSync` check just to be thorough.
       return !this.file.existsSync() || this.buffer.isModified()
     } else {
+      // A buffer that never had any backing file on disk is always considered
+      // to be modified _unless_ it is completely empty. We should not be
+      // prompting users to save untitled buffers with empty contents.
       return this.buffer.getLength() > 0
     }
   }
 
-  // Public: Determine if the in-memory contents of the buffer conflict with the
-  // on-disk contents of its associated file.
+  // Public: Determine if the buffer is in a deleted state — meaning that it
+  // was previously backed by a file on disk, but is no longer.
+  isDeleted () {
+    let hasNoFile = !this.file || !this.file.existsSync()
+    return hasNoFile && this.didHaveFileOnDisk
+  }
+
+  // Public: Determine if the in-memory contents of the buffer conflict with
+  // the on-disk contents of its associated file.
+  //
+  // This happens if the contents of a buffer’s backing file change while the
+  // editor has uncommitted changes. Those uncommitted changes build upon a
+  // state that is now stale; if those changes were committed to disk, it could
+  // clobber the changes made by the external program.
   //
   // Returns a {Boolean}.
   isInConflict () {
-    return this.isModified() && this.fileHasChangedSinceLastLoad
+    // Deleted files are automatically in conflict if they consider themselves
+    // modified.
+    return this.isModified() && (this.fileHasChangedSinceLastLoad || this.isDeleted())
   }
 
   // Public: Get the path of the associated file.
@@ -574,7 +610,7 @@ class TextBuffer {
   //     can be used to prevent further calls to the callback.
   setFile (file) {
     if (!this.file && !file) return
-    if (file && file.getPath() === this.getPath()) return
+    if (file === this.file) return
 
     this.file = file
     if (this.file) {
@@ -935,6 +971,18 @@ class TextBuffer {
 
     this.emitWillChangeEvent()
     this.buffer.setTextInRange(oldRange, newText)
+
+    if (this.retainsUnmodifiedTraitAfterDeletion) {
+      // This buffer is in the "deleted" state but _not_ the "modified" state.
+      // This happens when the buffer's backing file is deleted _and_ the
+      // buffer is not already considered to be modified at the time of
+      // deletion.
+      //
+      // But this method introduces a change to the buffer, so we'll clear the
+      // flag that is preventing `isModified` from returning `true`.
+      this.retainsUnmodifiedTraitAfterDeletion = false
+      this.emitModifiedStatusChanged(this.isModified())
+    }
 
     if (this.markerLayers) {
       for (const id in this.markerLayers) {
@@ -1900,8 +1948,16 @@ class TextBuffer {
   //
   // Returns a {Promise} that resolves when the save has completed.
   saveAs (filePath) {
-    if (!filePath) throw new Error("Can't save buffer with no file path")
-    return this.saveTo(new File(filePath))
+    if (!filePath) {
+      throw new Error("Can't save buffer with no file path")
+    }
+    let file
+    if (this.file?.getPath() === filePath) {
+      file = this.file
+    } else {
+      file = new File(filePath)
+    }
+    return this.saveTo(file)
   }
 
   async saveTo (file) {
@@ -1929,6 +1985,7 @@ class TextBuffer {
 
       try {
         await this.buffer.save(destination, this.getEncoding())
+        this.didHaveFileOnDisk = true
       } catch (error) {
         if (error.code !== 'EACCES' || destination !== filePath) throw error
 
@@ -2003,7 +2060,7 @@ class TextBuffer {
   // Returns a language mode {Object} (See {TextBuffer::setLanguageMode} for its interface).
   getLanguageMode () { return this.languageMode }
 
-  // Experimental: Set the LanguageMode for this buffer.
+  // Experimental: Set the language mode for this buffer.
   //
   // * `languageMode` - an {Object} with the following methods:
   //   * `getLanguageId` - A {Function} that returns a {String} identifying the language.
@@ -2100,6 +2157,8 @@ class TextBuffer {
     if (!options || !options.internal) {
       Grim.deprecate('The .load instance method is deprecated. Create a loaded buffer using TextBuffer.load(filePath) instead.')
     }
+
+    this.didHaveFileOnDisk = true
 
     const source = this.file instanceof File
       ? this.file.getPath()
@@ -2294,13 +2353,22 @@ class TextBuffer {
 
     if (this.file.onDidDelete) {
       this.fileSubscriptions.add(this.file.onDidDelete(() => {
+        // At this point, asking `isModified` of the native buffer will deliver
+        // an accurate result that does not care about whether the file still
+        // exists on disk.
         const modified = this.buffer.isModified()
+        this.retainsUnmodifiedTraitAfterDeletion = !modified
         this.emitter.emit('did-delete')
         if (!modified && this.shouldDestroyOnFileDelete()) {
           return this.destroy()
         } else {
-          return this.emitModifiedStatusChanged(true)
+          return this.emitModifiedStatusChanged(this.isModified())
         }
+        // We don't set `this.file` to `null` because we still have a
+        // _theoretical_ file, even if it's no longer present on disk. In this
+        // scenario, we can re-commit the file to disk at its previous path
+        // with a simple "Save" command. If we nulled out `file`, the editor
+        // would prompt the user again about a save destination.
       }))
     }
 

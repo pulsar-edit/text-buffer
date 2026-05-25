@@ -610,41 +610,17 @@ class TextBuffer {
   //     can be used to prevent further calls to the callback.
   setFile (file) {
     if (!this.file && !file) return
-
-    // We use this heuristic to try to help us skip potentially costly
-    // re-subscribes when nothing has meaningfully changed.
-    let isExistingFile = file && file.getPath() === this.getPath()
-
-    // But there are some exceptions we should consider.
-    //
-    // If the backing file is deleted, a subsequent call to `save` will
-    // re-create the file. In that scenario, even though the path matches the
-    // buffer's last path, we still need to resubscribe to file events.
-    let shouldResubscribeAfterDeletion = this.shouldResubscribeIfPathMatches &&
-      file?.getPath() === this.shouldResubscribeIfPathMatches
-
-    // `file` is a duck-typed object, and just because two `file`s agree on
-    // their `getPath()` return value does not mean they are equivalent. Here
-    // we compare the old and new `file`s to see if they were instantiated from
-    // the same constructor; if not, we should re-subscribe.
-    let shouldResubscribeAfterNewImpl = !this.file || (file && this.file.constructor !== file.constructor)
+    if (file === this.file) return
 
     this.file = file
-    if (this.file && !isExistingFile) {
-      this.file.setEncoding?.(this.getEncoding())
+    if (this.file) {
+      if (typeof this.file.setEncoding === 'function') {
+        this.file.setEncoding(this.getEncoding())
+      }
+      this.subscribeToFile()
     }
 
-    if (shouldResubscribeAfterDeletion || shouldResubscribeAfterNewImpl || !isExistingFile) {
-      this.subscribeToFile()
-      this.shouldResubscribeIfPathMatches = undefined
-    }
-    if (!isExistingFile) {
-      // The act of setting a new file (even calling this method with
-      // `undefined`) should clear this buffer's deleted state.
-      this.didHaveFileOnDisk = false
-      this.shouldResubscribeIfPathMatches = undefined
-      this.emitter.emit('did-change-path', this.getPath())
-    }
+    this.emitter.emit('did-change-path', this.getPath())
   }
 
   // Public: Sets the character set encoding for this buffer.
@@ -1972,8 +1948,16 @@ class TextBuffer {
   //
   // Returns a {Promise} that resolves when the save has completed.
   saveAs (filePath) {
-    if (!filePath) throw new Error("Can't save buffer with no file path")
-    return this.saveTo(new File(filePath))
+    if (!filePath) {
+      throw new Error("Can't save buffer with no file path")
+    }
+    let file
+    if (this.file?.getPath() === filePath) {
+      file = this.file
+    } else {
+      file = new File(filePath)
+    }
+    return this.saveTo(file)
   }
 
   async saveTo (file) {
@@ -2375,16 +2359,6 @@ class TextBuffer {
         const modified = this.buffer.isModified()
         this.retainsUnmodifiedTraitAfterDeletion = !modified
         this.emitter.emit('did-delete')
-        // We want to keep the `file` property around so that the user can save
-        // this file again without having to pick a new path. But if that
-        // happens, we'll need to resubscribe to file events, despite already
-        // having subscribed the first time around.
-        //
-        // We can do this by calling `subscribeToFile` every time we call
-        // `setFile`, but that will create a lot of churn. Instead, we should
-        // keep track of this exact scenario and call `subscribeToFile` again
-        // only when we need to.
-        this.shouldResubscribeIfPathMatches = this.getPath()
         if (!modified && this.shouldDestroyOnFileDelete()) {
           return this.destroy()
         } else {

@@ -616,8 +616,8 @@ class TextBuffer {
     }
     if (
       this.shouldResubscribeIfPathMatches &&
-      this.file.getPath() === this.shouldResubscribeIfPathMatches) {
-    } {
+      this.file.getPath() === this.shouldResubscribeIfPathMatches
+    ) {
       this.subscribeToFile();
       this.shouldResubscribeIfPathMatches = undefined;
     }

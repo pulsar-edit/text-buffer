@@ -5,7 +5,7 @@ const _ = require('underscore-plus')
 const path = require('path')
 const crypto = require('crypto')
 const mkdirp = require('mkdirp')
-const {TextBuffer: NativeTextBuffer} = require('@pulsar-edit/superstring');
+const {TextBuffer: NativeTextBuffer} = require('@pulsar-edit/superstring')
 const Point = require('./point')
 const Range = require('./range')
 const DefaultHistoryProvider = require('./default-history-provider')
@@ -313,22 +313,24 @@ class TextBuffer {
     return this.emitter.on('will-change', callback)
   }
 
-  // Public: Invoke the given callback synchronously when a transaction finishes
-  // with a list of all the changes in the transaction.
+  // Public: Invoke the given callback synchronously when a transaction
+  // finishes with a list of all the changes in the transaction.
   //
   // * `callback` {Function} to be called when a transaction in which textual
   //   changes occurred is completed.
   //   * `event` {Object} with the following keys:
-  //     * `oldRange` The smallest combined {Range} containing all of the old text.
-  //     * `newRange` The smallest combined {Range} containing all of the new text.
+  //     * `oldRange` The smallest combined {Range} containing all of the old
+  //       text.
+  //     * `newRange` The smallest combined {Range} containing all of the new
+  //       text.
   //     * `changes` {Array} of {Object}s summarizing the aggregated changes
   //       that occurred during the transaction. See *Working With Aggregated
   //       Changes* in the description of the {TextBuffer} class for details.
   //       * `oldRange` The {Range} of the deleted text in the contents of the
-  //         buffer as it existed *before* the batch of changes reported by this
-  //         event.
-  //       * `newRange`: The {Range} of the inserted text in the current contents
-  //         of the buffer.
+  //         buffer as it existed *before* the batch of changes reported by
+  //         this event.
+  //       * `newRange`: The {Range} of the inserted text in the current
+  //         contents of the buffer.
   //       * `oldText`: A {String} representing the deleted text.
   //       * `newText`: A {String} representing the inserted text.
   //
@@ -356,10 +358,10 @@ class TextBuffer {
   //       changes. See *Working With Aggregated Changes* in the description of
   //       the {TextBuffer} class for details.
   //       * `oldRange` The {Range} of the deleted text in the contents of the
-  //         buffer as it existed *before* the batch of changes reported by this
-  //         event.
-  //       * `newRange`: The {Range} of the inserted text in the current contents
-  //         of the buffer.
+  //         buffer as it existed *before* the batch of changes reported by
+  //         this event.
+  //       * `newRange`: The {Range} of the inserted text in the current
+  //         contents of the buffer.
   //       * `oldText`: A {String} representing the deleted text.
   //       * `newText`: A {String} representing the inserted text.
   //
@@ -614,18 +616,20 @@ class TextBuffer {
     if (this.file && !isExistingFile) {
       this.file.setEncoding?.(this.getEncoding())
     }
-    if (
-      this.shouldResubscribeIfPathMatches &&
+    // If the backing file is deleted, a subsequent call to `save` will
+    // re-create the file. In that scenario, even though the path matches the
+    // buffer's last path, we still need to resubscribe to file events.
+    let shouldResubscribe = this.shouldResubscribeIfPathMatches &&
       this.file.getPath() === this.shouldResubscribeIfPathMatches
-    ) {
-      this.subscribeToFile();
-      this.shouldResubscribeIfPathMatches = undefined;
+    if (shouldResubscribe || !isExistingFile) {
+      this.subscribeToFile()
+      this.shouldResubscribeIfPathMatches = undefined
     }
     if (!isExistingFile) {
       // The act of setting a new file (even calling this method with
       // `undefined`) should clear this buffer's deleted state.
-      this.didHaveFileOnDisk = false;
-      this.shouldResubscribeIfPathMatches = undefined;
+      this.didHaveFileOnDisk = false
+      this.shouldResubscribeIfPathMatches = undefined
       this.emitter.emit('did-change-path', this.getPath())
     }
   }
@@ -888,12 +892,6 @@ class TextBuffer {
     if (undo != null) {
       Grim.deprecate('The `undo` option is deprecated. Call groupLastChanges() on the TextBuffer afterward instead.')
     }
-    if (this.retainsUnmodifiedTraitAfterDeletion) {
-      this.retainsUnmodifiedTraitAfterDeletion = false
-      // Flipping this to `false` will result in a change to the "modified"
-      // state.
-      this.emitModifiedStatusChanged(this.isModified())
-    }
 
     if (this.transactCallDepth === 0) {
       const newRange = this.transact(() => this.setTextInRange(range, newText, {normalizeLineEndings}))
@@ -984,6 +982,18 @@ class TextBuffer {
 
     this.emitWillChangeEvent()
     this.buffer.setTextInRange(oldRange, newText)
+
+    if (this.retainsUnmodifiedTraitAfterDeletion) {
+      // This buffer is in the "deleted" state but _not_ the "modified" state.
+      // This happens when the buffer's backing file is deleted _and_ the
+      // buffer is not already considered to be modified at the time of
+      // deletion.
+      //
+      // But this method introduces a change to the buffer, so we'll clear the
+      // flag that is preventing `isModified` from returning `true`.
+      this.retainsUnmodifiedTraitAfterDeletion = false
+      this.emitModifiedStatusChanged(this.isModified())
+    }
 
     if (this.markerLayers) {
       for (const id in this.markerLayers) {
@@ -2361,7 +2371,7 @@ class TextBuffer {
         // `setFile`, but that will create a lot of churn. Instead, we should
         // keep track of this exact scenario and call `subscribeToFile` again
         // only when we need to.
-        this.shouldResubscribeIfPathMatches = this.getPath();
+        this.shouldResubscribeIfPathMatches = this.getPath()
         if (!modified && this.shouldDestroyOnFileDelete()) {
           return this.destroy()
         } else {

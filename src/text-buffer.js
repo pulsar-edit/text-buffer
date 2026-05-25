@@ -610,18 +610,31 @@ class TextBuffer {
   //     can be used to prevent further calls to the callback.
   setFile (file) {
     if (!this.file && !file) return
+
+    // We use this heuristic to try to help us skip potentially costly
+    // re-subscribes when nothing has meaningfully changed.
     let isExistingFile = file && file.getPath() === this.getPath()
+
+    // But there are some exceptions we should consider.
+    //
+    // If the backing file is deleted, a subsequent call to `save` will
+    // re-create the file. In that scenario, even though the path matches the
+    // buffer's last path, we still need to resubscribe to file events.
+    let shouldResubscribeAfterDeletion = this.shouldResubscribeIfPathMatches &&
+      file?.getPath() === this.shouldResubscribeIfPathMatches
+
+    // `file` is a duck-typed object, and just because two `file`s agree on
+    // their `getPath()` return value does not mean they are equivalent. Here
+    // we compare the old and new `file`s to see if they were instantiated from
+    // the same constructor; if not, we should re-subscribe.
+    let shouldResubscribeAfterNewImpl = !this.file || (file && this.file.constructor !== file.constructor)
 
     this.file = file
     if (this.file && !isExistingFile) {
       this.file.setEncoding?.(this.getEncoding())
     }
-    // If the backing file is deleted, a subsequent call to `save` will
-    // re-create the file. In that scenario, even though the path matches the
-    // buffer's last path, we still need to resubscribe to file events.
-    let shouldResubscribe = this.shouldResubscribeIfPathMatches &&
-      this.file.getPath() === this.shouldResubscribeIfPathMatches
-    if (shouldResubscribe || !isExistingFile) {
+
+    if (shouldResubscribeAfterDeletion || shouldResubscribeAfterNewImpl || !isExistingFile) {
       this.subscribeToFile()
       this.shouldResubscribeIfPathMatches = undefined
     }

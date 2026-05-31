@@ -680,6 +680,26 @@ describe('TextBuffer IO', () => {
           await wait(500)
           expect(buffer.isModified()).toBe(false)
           expect(buffer.isDeleted()).toBe(true)
+
+          // Simulate an external program recreating the file.
+          const deletedStatusChanges = []
+          let reloadedCount = 0
+          let conflictedCount = 0
+          buffer.onDidChangeDeleted((status) => deletedStatusChanges.push(status))
+          buffer.onDidReload(() => reloadedCount++)
+          buffer.onDidConflict(() => conflictedCount++)
+          fs.writeFileSync(filePath, `lorem`)
+
+          // Calling `resurrect` triggers the logic that would take place
+          // automatically if we were able to detect our own file
+          // resurrections.
+          await buffer.resurrect()
+
+          expect(deletedStatusChanges.length).toBe(1)
+          expect(deletedStatusChanges[0]).toBe(false)
+          expect(reloadedCount).toBe(1)
+          expect(conflictedCount).toBe(0)
+          expect(buffer.isDeleted()).toBe(false)
         })
 
         it('initially reports the modified status as false, but flips it back to true if the user makes further changes', async () => {
@@ -699,6 +719,28 @@ describe('TextBuffer IO', () => {
           buffer.setText(`lorem ipsum`)
           expect(buffer.isModified()).toBe(true)
           expect(buffer.isDeleted()).toBe(true)
+
+          // Now let's add some uncommitted changes in order to complicate the
+          // resurrection of the file.
+          buffer.setText('ipsum lorem')
+
+          let reloadedCount = 0
+          let conflictedCount = 0
+
+          // Simulate an external program recreating the file.
+          buffer.onDidReload(() => reloadedCount++)
+          buffer.onDidConflict(() => conflictedCount++)
+          fs.writeFileSync(filePath, `lorem ipsum`)
+
+          // Calling `resurrect` triggers the logic that would take place
+          // automatically if we were able to detect our own file
+          // resurrections.
+          await buffer.resurrect()
+
+          expect(reloadedCount).toBe(1)
+          expect(conflictedCount).toBe(1)
+          expect(buffer.isDeleted()).toBe(false)
+          expect(buffer.isModified()).toBe(true)
         })
 
         describe('and re-saved', () => {

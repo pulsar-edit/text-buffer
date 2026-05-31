@@ -2158,7 +2158,11 @@ class TextBuffer {
       Grim.deprecate('The .load instance method is deprecated. Create a loaded buffer using TextBuffer.load(filePath) instead.')
     }
 
-    this.didHaveFileOnDisk = true
+    if (this.file instanceof File) {
+      // The consumer is allowed to set a `File` instance with a path that does
+      // not currently exist on disk.
+      this.didHaveFileOnDisk = this.file.existsSync()
+    }
 
     const source = this.file instanceof File
       ? this.file.getPath()

@@ -55,6 +55,7 @@ describe('TextBuffer IO', () => {
       buffer = await TextBuffer.load(filePath)
       expect(buffer.getText()).toBe('')
       expect(buffer.isModified()).toBe(true)
+      expect(buffer.isDeleted()).toBe(false)
       expect(buffer.undo()).toBe(false)
       expect(buffer.getText()).toBe('')
       done()

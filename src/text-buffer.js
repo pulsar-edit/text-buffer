@@ -560,6 +560,11 @@ class TextBuffer {
     return hasNoFile && this.didHaveFileOnDisk
   }
 
+  updateDidHaveFileOnDisk () {
+    if (this.didHaveFileOnDisk || !this.file) return
+    this.didHaveFileOnDisk = this.file.existsSync()
+  }
+
   // Public: Determine if the in-memory contents of the buffer conflict with
   // the on-disk contents of its associated file.
   //
@@ -598,7 +603,8 @@ class TextBuffer {
   //     that can be used to load the file's content.
   //   * `createWriteStream` A {Function} that returns a `Writable` stream
   //     that can be used to save content to the file.
-  //   * `existsSync` A {Function} that returns a {Boolean}, true if the file exists, false otherwise.
+  //   * `existsSync` A {Function} that returns a {Boolean}, true if the file
+  //     exists, false otherwise.
   //   * `onDidChange` (optional) A {Function} that invokes its callback argument
   //     when the file changes. The method should return a {Disposable} that
   //     can be used to prevent further calls to the callback.
@@ -613,6 +619,12 @@ class TextBuffer {
     if (file === this.file) return
 
     this.file = file
+    // Every instance of `File` should be considered a new file at a new path.
+    // For that reason, we must also reset `didHaveFileOnDisk`. If the new path
+    // exists (or if the path hasn't actually changed and still exists), this
+    // value will immediately flip to `true`.
+    this.didHaveFileOnDisk = false
+    this.updateDidHaveFileOnDisk()
     if (this.file) {
       if (typeof this.file.setEncoding === 'function') {
         this.file.setEncoding(this.getEncoding())
@@ -2122,13 +2134,15 @@ class TextBuffer {
       Grim.deprecate('The .loadSync instance method is deprecated. Create a loaded buffer using TextBuffer.loadSync(filePath) instead.')
     }
 
+    this.updateDidHaveFileOnDisk()
+
     let patch = null
     let checkpoint = null
     try {
       patch = this.buffer.loadSync(
         this.getPath(),
         this.getEncoding(),
-        (percentDone, patch) => {
+        (_percentDone, patch) => {
           if (patch && patch.getChangeCount() > 0) {
             checkpoint = this.historyProvider.createCheckpoint({
               markers: this.createMarkerSnapshot(),
@@ -2158,11 +2172,7 @@ class TextBuffer {
       Grim.deprecate('The .load instance method is deprecated. Create a loaded buffer using TextBuffer.load(filePath) instead.')
     }
 
-    if (this.file instanceof File) {
-      // The consumer is allowed to set a `File` instance with a path that does
-      // not currently exist on disk.
-      this.didHaveFileOnDisk = this.file.existsSync()
-    }
+    this.updateDidHaveFileOnDisk()
 
     const source = this.file instanceof File
       ? this.file.getPath()
@@ -2357,6 +2367,9 @@ class TextBuffer {
 
     if (this.file.onDidDelete) {
       this.fileSubscriptions.add(this.file.onDidDelete(() => {
+        // A `delete` event is proof that a backing file did exist at one
+        // point!
+        this.didHaveFileOnDisk = true
         // At this point, asking `isModified` of the native buffer will deliver
         // an accurate result that does not care about whether the file still
         // exists on disk.

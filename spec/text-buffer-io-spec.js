@@ -127,6 +127,31 @@ describe('TextBuffer IO', () => {
         expect(e.code).toBe('ENOENT')
       }
     })
+
+    it('is not in a deleted state, and becomes deleted when its file is removed', async () => {
+      const filePath = temp.openSync('atom').path
+      fs.writeFileSync(filePath, 'hello')
+
+      buffer = TextBuffer.loadSync(filePath)
+      expect(buffer.isDeleted()).toBe(false)
+
+      fs.unlinkSync(filePath)
+      expect(buffer.isDeleted()).toBe(true)
+
+      // The buffer only learns that it was unmodified at the time of deletion
+      // once its `onDidDelete` handler runs, so we must wait for the file
+      // watcher before asking about modified status.
+      await wait(500)
+      expect(buffer.isModified()).toBe(false)
+    })
+
+    it('does not report the buffer as deleted if its file never existed', async () => {
+      const filePath = path.join(temp.mkdirSync('atom'), 'does-not-exist.txt')
+
+      buffer = TextBuffer.loadSync(filePath)
+      expect(buffer.getText()).toBe('')
+      expect(buffer.isDeleted()).toBe(false)
+    })
   })
 
   describe('.reload', () => {
@@ -715,6 +740,21 @@ describe('TextBuffer IO', () => {
         await wait(500)
         expect(buffer.isDeleted()).toBe(true)
         expect(buffer.isModified()).toBe(true)
+      })
+    })
+
+    describe('when the buffer’s path changes after its file is deleted', () => {
+      it('stops reporting the buffer as deleted', async () => {
+        fs.unlinkSync(filePath)
+        await wait(500)
+        expect(buffer.isDeleted()).toBe(true)
+
+        // A brand-new path has never had a file on disk, so the buffer is no
+        // longer in a “deleted” state — nor is it in conflict, despite being
+        // considered modified by virtue of being unsaved.
+        buffer.setPath(path.join(temp.mkdirSync('atom'), 'does-not-exist.txt'))
+        expect(buffer.isDeleted()).toBe(false)
+        expect(buffer.isInConflict()).toBe(false)
       })
     })
 

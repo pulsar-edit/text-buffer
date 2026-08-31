@@ -301,6 +301,49 @@ describe('TextBuffer IO', () => {
     })
   })
 
+  describe('.resurrect', () => {
+    let filePath
+
+    beforeEach(async done => {
+      filePath = temp.openSync('atom').path
+      fs.writeFileSync(filePath, 'abcdefg')
+      buffer = await TextBuffer.load(filePath)
+      done()
+    })
+
+    it('resubscribes to the file', async done => {
+      fs.unlinkSync(filePath)
+      await wait(500)
+      expect(buffer.isDeleted()).toBe(true)
+
+      // A buffer whose file has been deleted no longer has a file watcher,
+      // because one cannot watch a path that does not exist. Resurrection must
+      // therefore start watching the file again; detecting the resurrection
+      // itself is the caller's job, but resuming our own bookkeeping is ours.
+      spyOn(buffer, 'subscribeToFile').and.callThrough()
+
+      fs.writeFileSync(filePath, 'abcdefg')
+      await buffer.resurrect()
+
+      expect(buffer.subscribeToFile).toHaveBeenCalled()
+      expect(buffer.isDeleted()).toBe(false)
+      done()
+    })
+
+    it('does nothing if the file is still missing', async done => {
+      fs.unlinkSync(filePath)
+      await wait(500)
+      expect(buffer.isDeleted()).toBe(true)
+
+      spyOn(buffer, 'subscribeToFile').and.callThrough()
+      await buffer.resurrect()
+
+      expect(buffer.subscribeToFile).not.toHaveBeenCalled()
+      expect(buffer.isDeleted()).toBe(true)
+      done()
+    })
+  })
+
   describe('.save', () => {
     let filePath
 
@@ -726,10 +769,12 @@ describe('TextBuffer IO', () => {
 
           let reloadedCount = 0
           let conflictedCount = 0
+          const conflictedStatusChanges = []
 
           // Simulate an external program recreating the file.
           buffer.onDidReload(() => reloadedCount++)
           buffer.onDidConflict(() => conflictedCount++)
+          buffer.onDidChangeConflicted((status) => conflictedStatusChanges.push(status))
           fs.writeFileSync(filePath, `lorem ipsum`)
 
           // Calling `resurrect` triggers the logic that would take place
@@ -737,8 +782,16 @@ describe('TextBuffer IO', () => {
           // resurrections.
           await buffer.resurrect()
 
-          expect(reloadedCount).toBe(1)
+          // Nothing was reloaded: the whole point of this scenario is that the
+          // buffer's uncommitted changes are preserved.
+          expect(reloadedCount).toBe(0)
           expect(conflictedCount).toBe(1)
+
+          // The buffer stays conflicted; the status must not flip back on its
+          // own once the load finishes.
+          expect(conflictedStatusChanges).toEqual([true])
+          expect(buffer.isInConflict()).toBe(true)
+
           expect(buffer.isDeleted()).toBe(false)
           expect(buffer.isModified()).toBe(true)
         })

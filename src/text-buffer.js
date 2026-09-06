@@ -1363,28 +1363,41 @@ class TextBuffer {
       isBarrier: true
     })
 
+    const catchError = (exception) => {
+      this.revertToCheckpoint(checkpointBefore, {deleteCheckpoint: true})
+      if (!(exception instanceof TransactionAbortedError)) throw exception
+    }
     try {
       this.transactCallDepth++
       result = fn()
     } catch (exception) {
-      this.revertToCheckpoint(checkpointBefore, {deleteCheckpoint: true})
-      if (!(exception instanceof TransactionAbortedError)) throw exception
-      return
+      return catchError(exception)
     } finally {
-      this.transactCallDepth--
+      if (result?.finally) {
+        result.finally(() => this.transactCallDepth--).catch(() => {})
+      } else {
+        this.transactCallDepth--
+      }
     }
 
     if (this.isDestroyed()) return result
-    const endMarkerSnapshot = this.createMarkerSnapshot(selectionsMarkerLayer)
-    this.historyProvider.groupChangesSinceCheckpoint(checkpointBefore, {
-      markers: endMarkerSnapshot,
-      deleteCheckpoint: true
-    })
-    this.historyProvider.applyGroupingInterval(groupingInterval)
-    this.historyProvider.enforceUndoStackSizeLimit()
-    this.emitDidChangeTextEvent()
-    this.emitMarkerChangeEvents(endMarkerSnapshot)
-    return result
+    const afterTransaction = () => {
+      const endMarkerSnapshot = this.createMarkerSnapshot(selectionsMarkerLayer)
+      this.historyProvider.groupChangesSinceCheckpoint(checkpointBefore, {
+        markers: endMarkerSnapshot,
+        deleteCheckpoint: true
+      })
+      this.historyProvider.applyGroupingInterval(groupingInterval)
+      this.historyProvider.enforceUndoStackSizeLimit()
+      this.emitDidChangeTextEvent()
+      this.emitMarkerChangeEvents(endMarkerSnapshot)
+      return result
+    }
+    if(result?.then) {
+      return result.then(afterTransaction).catch(catchError)
+    } else {
+      return afterTransaction()
+    }
   }
 
   // Public: Abort the currently running transaction

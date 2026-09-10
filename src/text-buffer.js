@@ -106,6 +106,12 @@ class TextBuffer {
     // now.
     this.didHaveFileOnDisk = false
 
+    // The most recently emitted “deleted” and “conflicted” statuses. They
+    // start at `false` so that the first status we emit describes an actual
+    // change rather than the buffer's initial state.
+    this.previousDeletedStatus = false
+    this.previousConflictedStatus = false
+
     // When a buffer's backing file is deleted while the file is unmodified,
     // this trait flips to `true`… and then flips back to `false` if any
     // further edits are made.
@@ -388,6 +394,28 @@ class TextBuffer {
   // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
   onDidChangeModified (callback) {
     return this.emitter.on('did-change-modified', callback)
+  }
+
+  // Public: Invoke the given callback when the buffer's "deleted" state is
+  // changed.
+  //
+  // Unlike {::onDidDelete}, this callback will fire when a buffer's "deleted"
+  // state is removed, not just when it is added.
+  //
+  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  onDidChangeDeleted (callback) {
+    return this.emitter.on('did-change-deleted', callback)
+  }
+
+  // Public: Invoke the given callback when the buffer's "conflicted" state is
+  // changed.
+  //
+  // Unlike {::onDidConflict}, this callback will fire when a buffer's
+  // "conflicted" state is removed, not just when it is added.
+  //
+  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  onDidChangeConflicted (callback) {
+    return this.emitter.on('did-change-conflicted', callback)
   }
 
   // Public: Invoke the given callback when all marker `::onDidChange`
@@ -2029,6 +2057,8 @@ class TextBuffer {
 
     this.setFile(file)
     this.fileHasChangedSinceLastLoad = false
+    this.emitConflictedStatusChanged(false)
+    this.emitDeletedStatusChanged(this.isDeleted())
     this.digestWhenLastPersisted = this.buffer.baseTextDigest()
     this.loaded = true
     this.emitModifiedStatusChanged(false)
@@ -2041,6 +2071,37 @@ class TextBuffer {
   // Returns a {Promise} that resolves when the load is complete.
   reload () {
     return this.load({discardChanges: true, internal: true})
+  }
+
+  // Extended: Notify a text buffer that its backing file has been restored and
+  // trigger a reload.
+  //
+  // `TextBuffer` uses a file-watcher library to detect when a file on disk is
+  // changed, renamed, or deleted so that it can update its internal state
+  // accordingly. But that library does not detect changes recursively, so
+  // `TextBuffer` cannot detect on its own when a previously deleted file is
+  // re-created by an external tool.
+  //
+  // Instead, this method exists as an easy way for an external file-watcher to
+  // signal to `TextBuffer` that this buffer's backing file has been
+  // resurrected, and that certain events ought to be emitted.
+  resurrect () {
+    // Either the file came back but was gone again by the time we ran… or
+    // something is calling this method speculatively (perhaps via polling) in
+    // lieu of a file-watcher.
+    if (this.isDeleted()) return
+
+    // A buffer whose file is deleted loses its file watcher, since one cannot
+    // watch a path that does not exist. Now that there is a file at this path
+    // again, we can resume watching it; otherwise this buffer would stay deaf
+    // to every subsequent change on disk.
+    this.subscribeToFile()
+
+    this.emitDeletedStatusChanged(false)
+    // This is like calling `reload`, but less aggressive; it will preserve
+    // uncommitted buffer contents and emit a `did-conflict` event instead of
+    // clobbering those changes.
+    return this.load({discardChanges: false, internal: true})
   }
 
   /*
@@ -2183,14 +2244,26 @@ class TextBuffer {
     let checkpoint = null
     let patch
     try {
+      let force = options?.discardChanges
       patch = await this.buffer.load(
         source,
         {
           encoding: this.getEncoding(),
-          force: options && options.discardChanges,
+          force,
           patch: this.loaded
         }
       )
+
+      const bailedOut = Boolean(this.loaded && !force && !patch)
+      if (bailedOut) {
+        // A `null` patch means the native layer declined to load. That means
+        // the buffer has uncommitted changes and we aren't forcing a reload.
+        // Its contents are now purposefully out of step with what's on disk.
+        // So instead of a succeeded load, we record it as a file that has
+        // changed underneath us.
+        this.fileHasChangedSinceLastLoad = true
+        this.emitConflictedStatusChanged(true)
+      }
 
       // If this is not the most recent load of this file, then we should bow
       // out and let the newer call to `load` handle the tasks below.
@@ -2205,7 +2278,7 @@ class TextBuffer {
           this.emitter.emit('will-reload')
         }
       }
-      this.finishLoading(checkpoint, patch, options)
+      this.finishLoading(checkpoint, patch, options, bailedOut)
     } catch (error) {
       if ((!options || !options.mustExist) && error.code === 'ENOENT') {
         this.emitter.emit('will-reload')
@@ -2219,7 +2292,7 @@ class TextBuffer {
     return this
   }
 
-  finishLoading (checkpoint, patch, options) {
+  finishLoading (checkpoint, patch, options, bailedOut = false) {
     if (this.isDestroyed() || (this.loaded && checkpoint == null && patch != null)) {
       if (options && options.discardChanges) {
         this.emitter.emit('did-reload')
@@ -2227,7 +2300,13 @@ class TextBuffer {
       return
     }
 
-    this.fileHasChangedSinceLastLoad = false
+    if (!bailedOut) this.fileHasChangedSinceLastLoad = false
+
+    // Emit the statuses the buffer actually holds rather than assuming a load
+    // clears them. Both emitters are no-ops when nothing has changed.
+    this.emitConflictedStatusChanged(this.isInConflict())
+    this.emitDeletedStatusChanged(this.isDeleted())
+
     this.digestWhenLastPersisted = this.buffer.baseTextDigest()
     this.cachedText = null
 
@@ -2275,7 +2354,13 @@ class TextBuffer {
     }
 
     this.loaded = true
-    this.emitter.emit('did-reload')
+
+    // A load that bailed out deliberately left the buffer's contents alone, so
+    // it did not reload anything; a consumer that hears `did-reload` would
+    // wrongly assume the buffer now matches what is on disk. Such a load emits
+    // no `will-reload` either, so staying silent here keeps the pair
+    // symmetrical.
+    if (!bailedOut) this.emitter.emit('did-reload')
     return this
   }
 
@@ -2341,6 +2426,16 @@ class TextBuffer {
         // consistent behavior with Mac/Windows.
         if (!this.file.existsSync()) return
         if (this.outstandingSaveCount > 0) return
+
+        // The file exists, so the buffer is no longer deleted, whether or not
+        // anything ever told it so. A file that is deleted and then recreated
+        // otherwise leaves the deleted status stuck at `true` forever, which
+        // would swallow the _next_ deletion.
+        this.emitDeletedStatusChanged(this.isDeleted())
+
+        // This file has changed since we last loaded it from disk, but that
+        // does not automatically mean there is a conflict. Set the flag, but
+        // do not emit a `did-conflict` event until we are sure.
         this.fileHasChangedSinceLastLoad = true
 
         if (this.isModified()) {
@@ -2348,11 +2443,12 @@ class TextBuffer {
           if (!(await this.buffer.baseTextMatchesFile(source, this.getEncoding()))) {
             // Emit `did-conflict` and take no other action. We will keep the
             // current buffer contents so that the user's changes are not lost.
-            this.emitter.emit('did-conflict')
+            this.emitConflictedStatusChanged(true)
           } else {
             // Despite being modified, we're once again in alignment with what
             // is on disk. This file is not in conflict.
             this.fileHasChangedSinceLastLoad = false
+            this.emitConflictedStatusChanged(false)
           }
         } else {
           // This buffer was previously in sync with what was on disk, so we
@@ -2360,6 +2456,7 @@ class TextBuffer {
           // definition, this means there is no conflict, so we'll reset the
           // appropriate flag.
           this.fileHasChangedSinceLastLoad = false
+          this.emitConflictedStatusChanged(false)
           return this.load({internal: true})
         }
       }, this.fileChangeDelay)))
@@ -2375,7 +2472,7 @@ class TextBuffer {
         // exists on disk.
         const modified = this.buffer.isModified()
         this.retainsUnmodifiedTraitAfterDeletion = !modified
-        this.emitter.emit('did-delete')
+        this.emitDeletedStatusChanged(true)
         if (!modified && this.shouldDestroyOnFileDelete()) {
           return this.destroy()
         } else {
@@ -2514,7 +2611,25 @@ class TextBuffer {
   emitModifiedStatusChanged (modifiedStatus) {
     if (modifiedStatus === this.previousModifiedStatus) return
     this.previousModifiedStatus = modifiedStatus
-    return this.emitter.emit('did-change-modified', modifiedStatus)
+    this.emitter.emit('did-change-modified', modifiedStatus)
+  }
+
+  emitDeletedStatusChanged (deletedStatus) {
+    if (deletedStatus === this.previousDeletedStatus) return
+    this.previousDeletedStatus = deletedStatus
+    this.emitter.emit('did-change-deleted', deletedStatus)
+    if (deletedStatus) {
+      this.emitter.emit('did-delete')
+    }
+  }
+
+  emitConflictedStatusChanged (conflictedStatus) {
+    if (conflictedStatus === this.previousConflictedStatus) return
+    this.previousConflictedStatus = conflictedStatus
+    this.emitter.emit('did-change-conflicted', conflictedStatus)
+    if (conflictedStatus) {
+      this.emitter.emit('did-conflict')
+    }
   }
 
   logLines (start = 0, end = this.getLastRow()) {

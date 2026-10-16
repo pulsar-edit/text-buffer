@@ -785,15 +785,76 @@ describe('TextBuffer IO', () => {
           // Nothing was reloaded: the whole point of this scenario is that the
           // buffer's uncommitted changes are preserved.
           expect(reloadedCount).toBe(0)
-          expect(conflictedCount).toBe(1)
 
-          // The buffer stays conflicted; the status must not flip back on its
-          // own once the load finishes.
-          expect(conflictedStatusChanges).toEqual([true])
-          expect(buffer.isInConflict()).toBe(true)
+          // The file came back with exactly the contents our changes are
+          // based on, so there's nothing to conflict with.
+          expect(conflictedCount).toBe(0)
+          expect(conflictedStatusChanges).toEqual([])
+          expect(buffer.isInConflict()).toBe(false)
 
           expect(buffer.isDeleted()).toBe(false)
           expect(buffer.isModified()).toBe(true)
+        })
+
+        describe('while the buffer has unsaved changes', () => {
+          async function deleteAndResurrect (restoredText) {
+            fs.unlinkSync(filePath)
+            await wait(500)
+            expect(buffer.isDeleted()).toBe(true)
+
+            const events = {conflictedCount: 0, conflictedStatusChanges: []}
+            buffer.onDidConflict(() => events.conflictedCount++)
+            buffer.onDidChangeConflicted((status) => events.conflictedStatusChanges.push(status))
+            fs.writeFileSync(filePath, restoredText)
+            await buffer.resurrect()
+            return events
+          }
+
+          beforeEach(async () => {
+            buffer.setText(`lorem ipsum`)
+            await buffer.save()
+            buffer.setText(`lorem ipsum dolor`)
+          })
+
+          it('reports a conflict if the file is restored with different contents', async () => {
+            const events = await deleteAndResurrect(`dolor sit amet`)
+            expect(events.conflictedCount).toBe(1)
+            expect(buffer.isInConflict()).toBe(true)
+            expect(buffer.isModified()).toBe(true)
+            expect(buffer.isDeleted()).toBe(false)
+            expect(buffer.getText()).toBe(`lorem ipsum dolor`)
+          })
+
+          it('reports a conflict if the file is restored empty', async () => {
+            const events = await deleteAndResurrect(``)
+            expect(events.conflictedCount).toBe(1)
+            expect(buffer.isInConflict()).toBe(true)
+            expect(buffer.getText()).toBe(`lorem ipsum dolor`)
+          })
+
+          it('does not report a conflict if the file is restored with the contents it had before', async () => {
+            const events = await deleteAndResurrect(`lorem ipsum`)
+            expect(events.conflictedCount).toBe(0)
+            expect(events.conflictedStatusChanges).toEqual([])
+            expect(buffer.isInConflict()).toBe(false)
+            expect(buffer.isModified()).toBe(true)
+            expect(buffer.isDeleted()).toBe(false)
+            expect(buffer.getText()).toBe(`lorem ipsum dolor`)
+          })
+
+          it('stays in conflict if it was already in conflict before the file was deleted', async () => {
+            const conflicted = new Promise((resolve) => buffer.onDidConflict(resolve))
+            fs.writeFileSync(filePath, `dolor sit amet`)
+            await conflicted
+            expect(buffer.isInConflict()).toBe(true)
+
+            // Even a file restored with the buffer's base text doesn't resolve
+            // a conflict that predates the deletion.
+            await deleteAndResurrect(`lorem ipsum`)
+            expect(buffer.isInConflict()).toBe(true)
+            expect(buffer.isModified()).toBe(true)
+            expect(buffer.isDeleted()).toBe(false)
+          })
         })
 
         describe('and re-saved', () => {

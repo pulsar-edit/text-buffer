@@ -2085,7 +2085,7 @@ class TextBuffer {
   // Instead, this method exists as an easy way for an external file-watcher to
   // signal to `TextBuffer` that this buffer's backing file has been
   // resurrected, and that certain events ought to be emitted.
-  resurrect () {
+  async resurrect () {
     // Either the file came back but was gone again by the time we ran… or
     // something is calling this method speculatively (perhaps via polling) in
     // lieu of a file-watcher.
@@ -2098,6 +2098,25 @@ class TextBuffer {
     this.subscribeToFile()
 
     this.emitDeletedStatusChanged(false)
+
+    // A modified buffer won't reload, and a refused load is recorded as a
+    // conflict. That's correct only if the file came back with different
+    // contents than what our changes are based on — or if we were already in
+    // conflict before the file was deleted.
+    if (this.buffer.isModified() && !this.fileHasChangedSinceLastLoad) {
+      const source = this.file instanceof File
+        ? this.file.getPath()
+        : this.file.createReadStream()
+      let matches = false
+      try {
+        matches = await this.buffer.baseTextMatchesFile(source, this.getEncoding())
+      } catch (error) {
+        // If the file vanished again, `load` will handle it.
+        if (error.code !== 'ENOENT') throw error
+      }
+      if (matches) return
+    }
+
     // This is like calling `reload`, but less aggressive; it will preserve
     // uncommitted buffer contents and emit a `did-conflict` event instead of
     // clobbering those changes.

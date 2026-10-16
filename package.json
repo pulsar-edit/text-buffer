@@ -33,7 +33,7 @@
   },
   "dependencies": {
     "@pulsar-edit/pathwatcher": "^9.0.4",
-    "@pulsar-edit/superstring": "^3.0.4",
+    "@pulsar-edit/superstring": "^3.0.8",
     "delegato": "^1.0.0",
     "diff": "^2.2.1",
     "event-kit": "^2.4.0",

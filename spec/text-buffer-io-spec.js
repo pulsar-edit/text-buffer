@@ -2,7 +2,7 @@ const fs = require('fs-plus')
 const path = require('path')
 const {Writable, Transform} = require('stream')
 const temp = require('temp')
-const {Disposable} = require('event-kit')
+const {Disposable, Emitter} = require('event-kit')
 const Point = require('../src/point')
 const Range = require('../src/range')
 const TextBuffer = require('../src/text-buffer')
@@ -842,18 +842,34 @@ describe('TextBuffer IO', () => {
             expect(buffer.getText()).toBe(`lorem ipsum dolor`)
           })
 
-          it('stays in conflict if it was already in conflict before the file was deleted', async () => {
+          it('clears an earlier conflict if the file is restored with the contents it had before', async () => {
             const conflicted = new Promise((resolve) => buffer.onDidConflict(resolve))
             fs.writeFileSync(filePath, `dolor sit amet`)
             await conflicted
             expect(buffer.isInConflict()).toBe(true)
 
-            // Even a file restored with the buffer's base text doesn't resolve
-            // a conflict that predates the deletion.
-            await deleteAndResurrect(`lorem ipsum`)
+            // The conflict predates the deletion, but the file came back with
+            // exactly what our changes are based on, so there's no longer
+            // anything to conflict with.
+            const events = await deleteAndResurrect(`lorem ipsum`)
+            expect(events.conflictedStatusChanges).toEqual([false])
+            expect(buffer.isInConflict()).toBe(false)
+            expect(buffer.isModified()).toBe(true)
+            expect(buffer.isDeleted()).toBe(false)
+            expect(buffer.getText()).toBe(`lorem ipsum dolor`)
+          })
+
+          it('stays in conflict if the file is restored with the contents that caused the conflict', async () => {
+            const conflicted = new Promise((resolve) => buffer.onDidConflict(resolve))
+            fs.writeFileSync(filePath, `dolor sit amet`)
+            await conflicted
+            expect(buffer.isInConflict()).toBe(true)
+
+            await deleteAndResurrect(`dolor sit amet`)
             expect(buffer.isInConflict()).toBe(true)
             expect(buffer.isModified()).toBe(true)
             expect(buffer.isDeleted()).toBe(false)
+            expect(buffer.getText()).toBe(`lorem ipsum dolor`)
           })
         })
 
@@ -1442,7 +1458,213 @@ describe('TextBuffer IO', () => {
       fs.writeFileSync(filePath, 'moo')
     })
   })
+
+  describe('.resurrect', () => {
+    let filePath
+
+    beforeEach(() => {
+      filePath = path.join(temp.mkdirSync(), 'file-to-resurrect')
+    })
+
+    function recordEvents () {
+      const events = []
+      buffer.onDidReload(() => events.push('did-reload'))
+      buffer.onDidConflict(() => events.push('did-conflict'))
+      buffer.onDidChangeDeleted((status) => events.push(`did-change-deleted:${status}`))
+      return events
+    }
+
+    async function loadAndDelete (options) {
+      fs.writeFileSync(filePath, 'abc')
+      buffer = await TextBuffer.load(filePath, options)
+      const deleted = new Promise((resolve) => buffer.onDidDelete(resolve))
+      fs.unlinkSync(filePath)
+      await deleted
+    }
+
+    it('does nothing to a buffer that has never had a file', async () => {
+      buffer = new TextBuffer('abc')
+      const events = recordEvents()
+      await buffer.resurrect()
+      expect(events).toEqual([])
+      expect(buffer.getText()).toBe('abc')
+      expect(buffer.isDeleted()).toBe(false)
+    })
+
+    it('does nothing to a buffer whose file has never existed on disk', async () => {
+      buffer = new TextBuffer('abc')
+      buffer.setPath(filePath)
+      const events = recordEvents()
+      await buffer.resurrect()
+
+      // Not even if a file shows up at that path later.
+      fs.writeFileSync(filePath, 'xyz')
+      await buffer.resurrect()
+
+      expect(events).toEqual([])
+      expect(buffer.getText()).toBe('abc')
+      expect(buffer.isDeleted()).toBe(false)
+    })
+
+    it('does nothing to a buffer that was destroyed when its file was deleted', async () => {
+      fs.writeFileSync(filePath, 'abc')
+      buffer = await TextBuffer.load(filePath, {shouldDestroyOnFileDelete: () => true})
+      const destroyed = new Promise((resolve) => buffer.onDidDestroy(resolve))
+      fs.unlinkSync(filePath)
+      await destroyed
+
+      fs.writeFileSync(filePath, 'abc')
+      spyOn(buffer, 'subscribeToFile')
+      await buffer.resurrect()
+      expect(buffer.subscribeToFile).not.toHaveBeenCalled()
+    })
+
+    it('does nothing to a buffer that is not deleted', async () => {
+      fs.writeFileSync(filePath, 'abc')
+      buffer = await TextBuffer.load(filePath)
+      buffer.append('def')
+      const events = recordEvents()
+      spyOn(buffer, 'subscribeToFile')
+      await buffer.resurrect()
+      expect(events).toEqual([])
+      expect(buffer.subscribeToFile).not.toHaveBeenCalled()
+      expect(buffer.getText()).toBe('abcdef')
+      expect(buffer.isInConflict()).toBe(false)
+    })
+
+    it('does nothing to a buffer whose file is still missing', async () => {
+      await loadAndDelete({shouldDestroyOnFileDelete: () => false})
+      const events = recordEvents()
+      await buffer.resurrect()
+      expect(events).toEqual([])
+      expect(buffer.isDeleted()).toBe(true)
+    })
+
+    it('resurrects a buffer only once when called repeatedly', async () => {
+      await loadAndDelete({shouldDestroyOnFileDelete: () => false})
+      fs.writeFileSync(filePath, 'xyz')
+      const events = recordEvents()
+      await Promise.all([buffer.resurrect(), buffer.resurrect()])
+      await buffer.resurrect()
+      expect(events).toEqual(['did-change-deleted:false', 'did-reload'])
+      expect(buffer.getText()).toBe('xyz')
+      expect(buffer.isDeleted()).toBe(false)
+    })
+
+    describe('when a deleted buffer is given a new path', () => {
+      let newPath
+
+      beforeEach(async () => {
+        await loadAndDelete({shouldDestroyOnFileDelete: () => false})
+        buffer.append('def')
+        newPath = path.join(path.dirname(filePath), 'new-file')
+      })
+
+      it('leaves the deleted state if nothing exists at the new path', async () => {
+        const events = recordEvents()
+        buffer.setPath(newPath)
+        expect(events).toEqual(['did-change-deleted:false'])
+        expect(buffer.isDeleted()).toBe(false)
+
+        // Nor does a file appearing at that path later make it resurrectable.
+        fs.writeFileSync(newPath, 'xyz')
+        await buffer.resurrect()
+        expect(events).toEqual(['did-change-deleted:false'])
+        expect(buffer.getText()).toBe('abcdef')
+      })
+
+      it('leaves the deleted state if a file exists at the new path', async () => {
+        fs.writeFileSync(newPath, 'xyz')
+        const events = recordEvents()
+        buffer.setPath(newPath)
+        expect(events).toEqual(['did-change-deleted:false'])
+        expect(buffer.isDeleted()).toBe(false)
+
+        // There's nothing left to resurrect.
+        await buffer.resurrect()
+        expect(events).toEqual(['did-change-deleted:false'])
+        expect(buffer.getText()).toBe('abcdef')
+      })
+    })
+
+    describe('when the file does not report its own deletion', () => {
+      let file
+
+      beforeEach(async () => {
+        fs.writeFileSync(filePath, 'abc')
+        file = new ManualFile(filePath)
+        buffer = await TextBuffer.load(file)
+        buffer.append('def')
+        fs.unlinkSync(filePath)
+      })
+
+      it('puts the buffer into the deleted state', async () => {
+        const events = recordEvents()
+        await buffer.resurrect()
+        expect(events).toEqual(['did-change-deleted:true'])
+        expect(buffer.isDeleted()).toBe(true)
+        expect(buffer.isModified()).toBe(true)
+
+        // Once the file comes back, the buffer can be resurrected as usual.
+        fs.writeFileSync(filePath, 'abc')
+        await buffer.resurrect()
+        expect(events).toEqual(['did-change-deleted:true', 'did-change-deleted:false'])
+        expect(buffer.isDeleted()).toBe(false)
+        expect(buffer.isInConflict()).toBe(false)
+        expect(buffer.getText()).toBe('abcdef')
+      })
+
+      it('is resurrected when the file reports a change after it reappears', async () => {
+        await buffer.resurrect()
+        expect(buffer.isDeleted()).toBe(true)
+
+        fs.writeFileSync(filePath, 'xyz')
+        spyOn(buffer, 'resurrect').and.callThrough()
+        const conflicted = new Promise((resolve) => buffer.onDidConflict(resolve))
+        file.emitChange()
+        await conflicted
+
+        expect(buffer.resurrect).toHaveBeenCalled()
+        expect(buffer.isDeleted()).toBe(false)
+        expect(buffer.isInConflict()).toBe(true)
+        expect(buffer.getText()).toBe('abcdef')
+      })
+    })
+  })
 })
+
+// A file whose `did-change` events are emitted on demand, and which never
+// reports its own deletion.
+class ManualFile {
+  constructor (path) {
+    this.path = path
+    this.emitter = new Emitter()
+  }
+
+  existsSync () {
+    return fs.existsSync(this.path)
+  }
+
+  getPath () {
+    return this.path
+  }
+
+  createReadStream () {
+    return fs.createReadStream(this.path)
+  }
+
+  createWriteStream () {
+    return fs.createWriteStream(this.path)
+  }
+
+  onDidChange (callback) {
+    return this.emitter.on('did-change', callback)
+  }
+
+  emitChange () {
+    this.emitter.emit('did-change')
+  }
+}
 
 class ReverseCaseFile {
   constructor (path) {

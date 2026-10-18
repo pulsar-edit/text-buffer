@@ -660,6 +660,10 @@ class TextBuffer {
       this.subscribeToFile()
     }
 
+    // A deleted buffer that moves to a new path isn't necessarily deleted
+    // anymore.
+    this.emitDeletedStatusChanged(this.isDeleted())
+
     this.emitter.emit('did-change-path', this.getPath())
   }
 
@@ -2085,7 +2089,23 @@ class TextBuffer {
   // Instead, this method exists as an easy way for an external file-watcher to
   // signal to `TextBuffer` that this buffer's backing file has been
   // resurrected, and that certain events ought to be emitted.
+  //
+  // This method is safe to call speculatively. It does nothing unless the
+  // buffer is in the deleted state and its file exists again — except that, if
+  // the buffer is _not_ in the deleted state but its file is missing, it puts
+  // the buffer into the deleted state, since its deletion went unnoticed.
   async resurrect () {
+    // There's nothing to resurrect in a destroyed buffer, or in one that has
+    // never had a file on disk.
+    if (this.isDestroyed() || !this.file || !this.didHaveFileOnDisk) return
+
+    if (!this.previousDeletedStatus) {
+      // We don't think we're deleted. If the file is missing anyway, its
+      // deletion went unreported; otherwise there's nothing to do.
+      if (this.isDeleted()) this.handleFileDeletion()
+      return
+    }
+
     // Either the file came back but was gone again by the time we ran… or
     // something is calling this method speculatively (perhaps via polling) in
     // lieu of a file-watcher.
@@ -2101,9 +2121,8 @@ class TextBuffer {
 
     // A modified buffer won't reload, and a refused load is recorded as a
     // conflict. That's correct only if the file came back with different
-    // contents than what our changes are based on — or if we were already in
-    // conflict before the file was deleted.
-    if (this.buffer.isModified() && !this.fileHasChangedSinceLastLoad) {
+    // contents than what our changes are based on.
+    if (this.buffer.isModified()) {
       const source = this.file instanceof File
         ? this.file.getPath()
         : this.file.createReadStream()
@@ -2114,7 +2133,13 @@ class TextBuffer {
         // If the file vanished again, `load` will handle it.
         if (error.code !== 'ENOENT') throw error
       }
-      if (matches) return
+      if (matches) {
+        // The file is back to what our changes are based on, so there's
+        // nothing to conflict with, whatever happened before it was deleted.
+        this.fileHasChangedSinceLastLoad = false
+        this.emitConflictedStatusChanged(false)
+        return
+      }
     }
 
     // This is like calling `reload`, but less aggressive; it will preserve
@@ -2446,11 +2471,9 @@ class TextBuffer {
         if (!this.file.existsSync()) return
         if (this.outstandingSaveCount > 0) return
 
-        // The file exists, so the buffer is no longer deleted, whether or not
-        // anything ever told it so. A file that is deleted and then recreated
-        // otherwise leaves the deleted status stuck at `true` forever, which
-        // would swallow the _next_ deletion.
-        this.emitDeletedStatusChanged(this.isDeleted())
+        // The file exists, but we still think it's deleted, so it must have
+        // come back without anyone telling us.
+        if (this.previousDeletedStatus) return this.resurrect()
 
         // This file has changed since we last loaded it from disk, but that
         // does not automatically mean there is a conflict. Set the flag, but
@@ -2483,25 +2506,7 @@ class TextBuffer {
 
     if (this.file.onDidDelete) {
       this.fileSubscriptions.add(this.file.onDidDelete(() => {
-        // A `delete` event is proof that a backing file did exist at one
-        // point!
-        this.didHaveFileOnDisk = true
-        // At this point, asking `isModified` of the native buffer will deliver
-        // an accurate result that does not care about whether the file still
-        // exists on disk.
-        const modified = this.buffer.isModified()
-        this.retainsUnmodifiedTraitAfterDeletion = !modified
-        this.emitDeletedStatusChanged(true)
-        if (!modified && this.shouldDestroyOnFileDelete()) {
-          return this.destroy()
-        } else {
-          return this.emitModifiedStatusChanged(this.isModified())
-        }
-        // We don't set `this.file` to `null` because we still have a
-        // _theoretical_ file, even if it's no longer present on disk. In this
-        // scenario, we can re-commit the file to disk at its previous path
-        // with a simple "Save" command. If we nulled out `file`, the editor
-        // would prompt the user again about a save destination.
+        return this.handleFileDeletion()
       }))
     }
 
@@ -2521,6 +2526,29 @@ class TextBuffer {
       this.oldFileSubscriptions.dispose()
       this.oldFileSubscriptions = null
     }
+  }
+
+  // Puts the buffer into the deleted state. Called when the file reports its
+  // own deletion, or when `resurrect` notices a deletion that went unreported.
+  handleFileDeletion () {
+    // A `delete` event is proof that a backing file did exist at one point!
+    this.didHaveFileOnDisk = true
+    // At this point, asking `isModified` of the native buffer will deliver an
+    // accurate result that does not care about whether the file still exists
+    // on disk.
+    const modified = this.buffer.isModified()
+    this.retainsUnmodifiedTraitAfterDeletion = !modified
+    this.emitDeletedStatusChanged(true)
+    if (!modified && this.shouldDestroyOnFileDelete()) {
+      return this.destroy()
+    } else {
+      return this.emitModifiedStatusChanged(this.isModified())
+    }
+    // We don't set `this.file` to `null` because we still have a
+    // _theoretical_ file, even if it's no longer present on disk. In this
+    // scenario, we can re-commit the file to disk at its previous path with a
+    // simple "Save" command. If we nulled out `file`, the editor would prompt
+    // the user again about a save destination.
   }
 
   createMarkerSnapshot (selectionsMarkerLayer) {

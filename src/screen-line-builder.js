@@ -1,6 +1,7 @@
 /* eslint-disable no-labels */
 
 const Point = require('./point')
+const BufferRowReader = require('./buffer-row-reader')
 
 const HARD_TAB = 1 << 0
 const LEADING_WHITESPACE = 1 << 2
@@ -109,6 +110,7 @@ class ScreenLineBuilder {
 
       this.currentBuiltInClassNameFlags = 0
       this.bufferLineLength = this.displayLayer.buffer.lineLengthForRow(this.bufferPosition.row)
+      this.bufferRowReader = new BufferRowReader(this.displayLayer.buffer, this.bufferPosition.row, this.bufferLineLength)
 
       if (this.bufferPosition.row > this.displayLayer.buffer.getLastRow()) break
       this.trailingWhitespaceStartColumn = this.displayLayer.findTrailingWhitespaceStartColumn(this.bufferPosition.row)
@@ -146,7 +148,7 @@ class ScreenLineBuilder {
           nextHunk = hunks[hunkIndex]
         }
 
-        var nextCharacter = this.displayLayer.buffer.getCharacterAtPosition(this.bufferPosition)
+        var nextCharacter = this.bufferRowReader.characterAt(this.bufferPosition.column)
         if (this.bufferPosition.column >= this.trailingWhitespaceStartColumn) {
           this.inTrailingWhitespace = true
           this.inLeadingWhitespace = false
@@ -286,6 +288,8 @@ class ScreenLineBuilder {
     this.scopeIdsToReopen = decorationIterator.seek(this.bufferPosition, endBufferRow)
 
     this.bufferLineLength = this.displayLayer.buffer.lineLengthForRow(this.bufferPosition.row)
+
+    this.bufferRowReader = new BufferRowReader(this.displayLayer.buffer, this.bufferPosition.row, this.bufferLineLength)
     this.trailingWhitespaceStartColumn = this.displayLayer.findTrailingWhitespaceStartColumn(this.bufferPosition.row)
     // Whitespace that was trailing on the buffer row where the fold started
     // says nothing about the buffer row where it ends.
@@ -456,12 +460,11 @@ class ScreenLineBuilder {
 
   // When we start building partway through a buffer row, determine whether
   // we're still in its leading whitespace (which can span soft wraps).
+  // Expects `this.bufferRowReader` to be reading `row`.
   isPrecededOnlyByWhitespace ({row, column}) {
     if (this.displayLayer.findBoundaryPrecedingBufferRow(row) !== row) return false
-    const buffer = this.displayLayer.buffer
-    const position = {row, column: 0}
-    for (; position.column < column; position.column++) {
-      const character = buffer.getCharacterAtPosition(position)
+    for (let c = 0; c < column; c++) {
+      const character = this.bufferRowReader.characterAt(c)
       if (character !== ' ' && character !== '\t') return false
     }
     return true

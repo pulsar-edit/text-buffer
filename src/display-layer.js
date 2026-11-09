@@ -442,7 +442,7 @@ class DisplayLayer {
     let unexpandedScreenColumn = 0
     let expandedScreenColumn = 0
     let {row: bufferRow, column: bufferColumn} = this.translateScreenPositionWithSpatialIndex(screenRowStart)
-    let bufferLine = this.buffer.lineForRow(bufferRow)
+    let reader = new BufferRowReader(this.buffer, bufferRow, this.buffer.lineLengthForRow(bufferRow))
 
     while (tabCount > 0) {
       if (unexpandedScreenColumn === targetScreenPosition.column) {
@@ -457,7 +457,7 @@ class DisplayLayer {
           expandedScreenColumn = unexpandedScreenColumn
         } else {
           ({row: bufferRow, column: bufferColumn} = nextHunk.oldEnd)
-          bufferLine = this.buffer.lineForRow(bufferRow)
+          reader = new BufferRowReader(this.buffer, bufferRow, this.buffer.lineLengthForRow(bufferRow))
           unexpandedScreenColumn++
           expandedScreenColumn++
         }
@@ -466,7 +466,7 @@ class DisplayLayer {
         continue
       }
 
-      if (bufferLine[bufferColumn] === '\t') {
+      if (reader.characterAt(bufferColumn) === '\t') {
         expandedScreenColumn += (this.tabLength - (expandedScreenColumn % this.tabLength))
         tabCount--
       } else {
@@ -493,7 +493,7 @@ class DisplayLayer {
     let unexpandedScreenColumn = 0
     let expandedScreenColumn = 0
     let {row: bufferRow, column: bufferColumn} = this.translateScreenPositionWithSpatialIndex(screenRowStart)
-    let bufferLine = this.buffer.lineForRow(bufferRow)
+    let reader = new BufferRowReader(this.buffer, bufferRow, this.buffer.lineLengthForRow(bufferRow))
 
     while (tabCount > 0) {
       if (expandedScreenColumn === targetScreenPosition.column) {
@@ -508,7 +508,7 @@ class DisplayLayer {
           expandedScreenColumn = unexpandedScreenColumn
         } else {
           ({row: bufferRow, column: bufferColumn} = nextHunk.oldEnd)
-          bufferLine = this.buffer.lineForRow(bufferRow)
+          reader = new BufferRowReader(this.buffer, bufferRow, this.buffer.lineLengthForRow(bufferRow))
           unexpandedScreenColumn++
           expandedScreenColumn++
         }
@@ -516,7 +516,7 @@ class DisplayLayer {
         continue
       }
 
-      if (bufferLine[bufferColumn] === '\t') {
+      if (reader.characterAt(bufferColumn) === '\t') {
         const nextTabStopColumn = expandedScreenColumn + this.tabLength - (expandedScreenColumn % this.tabLength)
         if (nextTabStopColumn > targetScreenPosition.column) {
           if (clipDirection === 'backward') {

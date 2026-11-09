@@ -4,7 +4,8 @@ const Range = require('./range')
 const DEFAULT_CHUNK_SIZE = 4096
 
 // Reads the characters of one buffer row a chunk at a time, so that working on
-// part of a long buffer row doesn't require fetching all of it.
+// part of a long buffer row doesn't require fetching all of it, and reading a
+// buffer row character by character doesn't cost a buffer call per character.
 class BufferRowReader {
   constructor (buffer, bufferRow, lineLength, chunkSize = DEFAULT_CHUNK_SIZE) {
     this.buffer = buffer
@@ -21,9 +22,14 @@ class BufferRowReader {
     const index = column - this.chunkStart
     if (index >= 0 && index < this.chunk.length) return this.chunk[index]
 
-    // Mostly we read forward, but the search for the first affected screen
-    // row reads backward, so keep some text before the requested column.
-    this.chunkStart = Math.max(0, column - (this.chunkSize >> 2))
+    if (index === this.chunk.length) {
+      // Reading forward past the end of the chunk: continue from here.
+      this.chunkStart = column
+    } else {
+      // Mostly we read forward, but the search for the first affected screen
+      // row reads backward, so keep some text before the requested column.
+      this.chunkStart = Math.max(0, column - (this.chunkSize >> 2))
+    }
     const chunkEnd = Math.min(this.lineLength, this.chunkStart + this.chunkSize)
     this.chunk = this.buffer.getTextInRange(Range(
       Point(this.bufferRow, this.chunkStart),

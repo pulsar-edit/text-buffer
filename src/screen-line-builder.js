@@ -68,11 +68,16 @@ class ScreenLineBuilder {
 
     let didSeekDecorationIterator = false
     const decorationIterator = this.displayLayer.buffer.languageMode.buildHighlightIterator()
-    const hunks = this.displayLayer.spatialIndex.getChangesInNewRange(Point(this.screenRow, 0), Point(endScreenRow, 0))
+    const hunks = this.displayLayer.spatialIndex.getChangesInNewRange(
+      Point(this.screenRow, 0),
+      Point(endScreenRow, 0)
+    )
     let hunkIndex = 0
     // Skip the soft-wrap hunk that ends at the start of our first screen row,
     // if it was included.
-    while (hunkIndex < hunks.length && hunks[hunkIndex].newStart.row < this.screenRow) hunkIndex++
+    while (hunkIndex < hunks.length && hunks[hunkIndex].newStart.row < this.screenRow) {
+      hunkIndex++
+    }
 
     this.containingScopeIds = []
     this.scopeIdsToReopen = []

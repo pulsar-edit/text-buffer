@@ -308,7 +308,7 @@ class DisplayLayer {
     let screenPosition = this.translateBufferPositionWithSpatialIndex(bufferPosition, clipDirection)
     const tabCount = this.tabCounts[screenPosition.row]
     if (tabCount > 0) {
-      screenPosition = this.expandHardTabs(screenPosition, bufferPosition, tabCount)
+      screenPosition = this.expandHardTabs(screenPosition, tabCount)
     }
 
     return Point.fromObject(screenPosition)
@@ -444,7 +444,7 @@ class DisplayLayer {
     return screenPosition
   }
 
-  expandHardTabs (targetScreenPosition, targetBufferPosition, tabCount) {
+  expandHardTabs (targetScreenPosition, tabCount) {
     const screenRowStart = Point(targetScreenPosition.row, 0)
     const hunks = this.spatialIndex.getChangesInNewRange(screenRowStart, targetScreenPosition)
     let hunkIndex = 0

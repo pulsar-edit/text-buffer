@@ -6,6 +6,7 @@ const DisplayMarkerLayer = require('./display-marker-layer')
 const {traverse, traversal, compare, max, isEqual} = require('./point-helpers')
 const isCharacterPair = require('./is-character-pair')
 const ScreenLineBuilder = require('./screen-line-builder')
+const BufferRowReader = require('./buffer-row-reader')
 const {spliceArray} = require('./helpers')
 const {MAX_BUILT_IN_SCOPE_ID} = require('./constants')
 
@@ -785,7 +786,14 @@ class DisplayLayer {
     this.populateSpatialIndexIfNeeded(endRow + 1, Infinity)
   }
 
-  bufferDidChange ({oldRange, newRange}) {
+  bufferDidChange (change) {
+    const changeWithinBufferRow = this.updateSpatialIndexForEditWithinBufferRow(change)
+    if (changeWithinBufferRow) {
+      this.didChange(changeWithinBufferRow)
+      return
+    }
+
+    const {oldRange, newRange} = change
     let startRow = oldRange.start.row
     let oldEndRow = oldRange.end.row
     let newEndRow = newRange.end.row
@@ -871,6 +879,13 @@ class DisplayLayer {
       let lastWrapBoundaryExpandedScreenColumn = 0
       let lastWrapBoundaryScreenLineWidth = 0
       let firstNonWhitespaceScreenColumn = -1
+      // Whether the current screen row contains anything yet. A screen row
+      // can't wrap before its first character, and the position of its first
+      // character is not a usable wrap boundary.
+      let consumedCharacterOnScreenRow = false
+      // The unexpanded screen column of the last fold on the current screen
+      // row, or -1.
+      let foldUnexpandedScreenColumn = -1
 
       while (bufferColumn <= bufferLineLength) {
         const foldEnd = folds[bufferRow] && folds[bufferRow][bufferColumn]
@@ -885,7 +900,8 @@ class DisplayLayer {
             firstNonWhitespaceScreenColumn = expandedScreenColumn
           }
         } else {
-          if (previousCharacter &&
+          if (consumedCharacterOnScreenRow &&
+              previousCharacter &&
               character &&
               this.isWrapBoundary(previousCharacter, character)) {
             lastWrapBoundaryUnexpandedScreenColumn = unexpandedScreenColumn
@@ -906,6 +922,7 @@ class DisplayLayer {
         }
 
         const insertSoftLineBreak =
+          consumedCharacterOnScreenRow &&
           screenLineWidth > 0 && characterWidth > 0 &&
           screenLineWidth + characterWidth > this.softWrapColumn &&
           previousCharacter && character &&
@@ -935,9 +952,45 @@ class DisplayLayer {
           }
           screenRow++
 
+          if (foldUnexpandedScreenColumn < unexpandedWrapColumn) {
+            // Rewind to the wrap boundary and scan the characters following
+            // it again as the start of the new screen row. Their widths (and
+            // which of them are wrap boundaries) are then determined by the
+            // new screen row alone, so the layout of every continuation screen
+            // row depends only on its starting buffer column, its indentation,
+            // and the text that follows. This is what allows an edit to stop
+            // re-wrapping a buffer row once the new soft wraps line up with
+            // the old ones.
+            let tabCountPrecedingWrap = 0
+            while (
+              tabCountPrecedingWrap < currentScreenLineTabColumns.length &&
+              currentScreenLineTabColumns[tabCountPrecedingWrap] < unexpandedWrapColumn
+            ) {
+              tabCountPrecedingWrap++
+            }
+            insertedTabCounts.push(tabCountPrecedingWrap)
+            currentScreenLineTabColumns.length = 0
+
+            bufferColumn -= (unexpandedScreenColumn - unexpandedWrapColumn)
+            unexpandedScreenColumn = indentLength
+            expandedScreenColumn = indentLength
+            screenLineWidth = indentLength * this.ratioForCharacter(' ')
+            lastWrapBoundaryUnexpandedScreenColumn = 0
+            lastWrapBoundaryExpandedScreenColumn = 0
+            lastWrapBoundaryScreenLineWidth = 0
+            consumedCharacterOnScreenRow = false
+            foldUnexpandedScreenColumn = -1
+            continue
+          }
+
+          // A fold lies between the wrap boundary and the current position, so
+          // we can't rewind without un-splicing it. Instead, carry the text
+          // following the wrap boundary over to the new screen row.
+          //
           // To determine the expanded screen column following the wrap, we need
           // to re-expand each tab following the wrap boundary, because tabs may
           // take on different lengths due to starting at different screen columns.
+          foldUnexpandedScreenColumn = foldUnexpandedScreenColumn - unexpandedWrapColumn + indentLength
           let unexpandedScreenColumnAfterLastTab = indentLength
           let expandedScreenColumnAfterLastTab = indentLength
           let tabCountPrecedingWrap = 0
@@ -973,6 +1026,7 @@ class DisplayLayer {
             traversal(foldEnd, {row: bufferRow, column: bufferColumn}),
             {row: 0, column: 1}
           )
+          foldUnexpandedScreenColumn = unexpandedScreenColumn
           unexpandedScreenColumn++
           expandedScreenColumn++
           screenLineWidth += characterWidth
@@ -995,6 +1049,7 @@ class DisplayLayer {
           unexpandedScreenColumn++
           bufferColumn++
         }
+        consumedCharacterOnScreenRow = true
       }
 
       expandedScreenColumn--
@@ -1034,20 +1089,12 @@ class DisplayLayer {
       insertedTabCounts
     )
 
-    const lastRemovedScreenRow = startScreenRow + oldScreenRowCount
-    if (rightmostInsertedScreenPosition.column > this.rightmostScreenPosition.column) {
-      this.rightmostScreenPosition = rightmostInsertedScreenPosition
-    } else if (lastRemovedScreenRow < this.rightmostScreenPosition.row) {
-      this.rightmostScreenPosition.row += insertedScreenLineLengths.length - oldScreenRowCount
-    } else if (startScreenRow <= this.rightmostScreenPosition.row) {
-      this.rightmostScreenPosition = Point(0, 0)
-      for (let row = 0, rowCount = this.screenLineLengths.length; row < rowCount; row++) {
-        if (this.screenLineLengths[row] > this.rightmostScreenPosition.column) {
-          this.rightmostScreenPosition.row = row
-          this.rightmostScreenPosition.column = this.screenLineLengths[row]
-        }
-      }
-    }
+    this.updateRightmostScreenPosition(
+      startScreenRow,
+      oldScreenRowCount,
+      insertedScreenLineLengths.length,
+      rightmostInsertedScreenPosition
+    )
 
     spliceArray(
       this.cachedScreenLines,
@@ -1060,6 +1107,379 @@ class DisplayLayer {
       start: Point(startScreenRow, 0),
       oldExtent: Point(oldScreenRowCount, 0),
       newExtent: Point(insertedScreenLineLengths.length, 0)
+    }
+  }
+
+  // Call after splicing `screenLineLengths`.
+  updateRightmostScreenPosition (startScreenRow, oldScreenRowCount, newScreenRowCount, rightmostInsertedScreenPosition) {
+    const lastRemovedScreenRow = startScreenRow + oldScreenRowCount
+    if (rightmostInsertedScreenPosition.column > this.rightmostScreenPosition.column) {
+      this.rightmostScreenPosition = rightmostInsertedScreenPosition
+    } else if (lastRemovedScreenRow < this.rightmostScreenPosition.row) {
+      this.rightmostScreenPosition.row += newScreenRowCount - oldScreenRowCount
+    } else if (startScreenRow <= this.rightmostScreenPosition.row) {
+      this.rightmostScreenPosition = Point(0, 0)
+      for (let row = 0, rowCount = this.screenLineLengths.length; row < rowCount; row++) {
+        if (this.screenLineLengths[row] > this.rightmostScreenPosition.column) {
+          this.rightmostScreenPosition.row = row
+          this.rightmostScreenPosition.column = this.screenLineLengths[row]
+        }
+      }
+    }
+  }
+
+  // Handles an edit that stays within one soft-wrapped buffer row without
+  // re-wrapping the whole buffer row. Returns the screen-row change to report,
+  // or `null` if the edit doesn't qualify, in which case the caller should use
+  // `updateSpatialIndex`.
+  //
+  // The re-wrap starts at the first screen row of the buffer row that the edit
+  // can affect. That can be above the screen row containing the edit, since an
+  // earlier screen row decides where to wrap by reading up to the character
+  // that overflows it, which can be on a later screen row. It stops at the
+  // first new soft wrap after the edit that lands where an old soft wrap was
+  // (shifted by the length of the edit) with the same indentation. Since a
+  // continuation screen row's layout depends only on its starting buffer
+  // column, its indentation, and the text that follows, every soft wrap after
+  // that point is unchanged, and the spatial index only needs to shift them.
+  //
+  // This reduces the work done on the spatial index and the screen line
+  // lengths and tab counts. It still invalidates the cached screen lines for
+  // the entire buffer row and reports the entire buffer row as changed,
+  // because the language mode may have re-highlighted any part of it without
+  // telling us.
+  updateSpatialIndexForEditWithinBufferRow (change) {
+    // Skip this altogether unless we're soft-wrapping.
+    if (!Number.isFinite(this.softWrapColumn)) return null
+
+    const {oldRange, newRange} = change
+    const bufferRow = oldRange.start.row
+    // Scenarios that don't qualify for this fast path:
+    // An edit that spans more than just one buffer row.
+    if (oldRange.end.row !== bufferRow || newRange.end.row !== bufferRow) return null
+    // An edit that includes any newlines (thereby creating a new buffer row).
+    // We wait until now to read this property: on a `ChangeEvent` (as when
+    // reloading from disk), `oldText` is computed on demand by rebuilding the
+    // old buffer text.
+    if (/[\r\n]/.test(change.oldText) || /[\r\n]/.test(change.newText)) return null
+
+    // Indent guides on adjacent blank lines depend on this buffer row.
+    if (this.showIndentGuides) {
+      if (bufferRow > 0 && this.buffer.lineLengthForRow(bufferRow - 1) === 0) {
+        return null
+      }
+      if (
+        bufferRow < this.buffer.getLastRow() &&
+        this.buffer.lineLengthForRow(bufferRow + 1) === 0
+      ) {
+        return null
+      }
+    }
+
+    // If this buffer line is (or was) hidden by a fold, in whole or in part,
+    // we can't use this optimization.
+    if (this.foldsMarkerLayer.findMarkers({intersectsRow: bufferRow}).length > 0) {
+      return null
+    }
+    if (this.findBoundaryPrecedingBufferRow(bufferRow) !== bufferRow) {
+      return null
+    }
+    if (this.findBoundaryFollowingBufferRow(bufferRow + 1) !== bufferRow + 1) {
+      return null
+    }
+
+    const editStartColumn = oldRange.start.column
+    const oldEditEndColumn = oldRange.end.column
+    const newEditEndColumn = newRange.end.column
+    const delta = newEditEndColumn - oldEditEndColumn
+    const lineLength = this.buffer.lineLengthForRow(bufferRow)
+    const oldLineLength = lineLength - delta
+    const reader = new BufferRowReader(
+      this.buffer, bufferRow, lineLength, Math.max(4096, 4 * this.softWrapColumn)
+    )
+
+    // An edit within the leading whitespace changes the indentation of every
+    // continuation screen row, so nothing would converge.
+    let firstNonWhitespaceBufferColumn = 0
+    let firstNonWhitespaceScreenColumn = 0
+    while (firstNonWhitespaceBufferColumn < editStartColumn) {
+      const character = reader.characterAt(firstNonWhitespaceBufferColumn)
+      if (character === '\t') {
+        // Hard tabs insert however much space is needed to bring us to the
+        // next tab stop.
+        firstNonWhitespaceScreenColumn += this.tabLength - (firstNonWhitespaceScreenColumn % this.tabLength)
+      } else if (character === ' ') {
+        firstNonWhitespaceScreenColumn++
+      } else {
+        break
+      }
+      firstNonWhitespaceBufferColumn++
+    }
+    if (firstNonWhitespaceBufferColumn >= editStartColumn) return null
+
+    // Look up soft wraps in the spatial index, which still describes the old
+    // buffer text. Returns the last soft-wrap hunk of this buffer row at or
+    // before the given buffer column; `null` if there is none; or `undefined`
+    // if we find something we can't handle.
+    const softWrapAtOrBefore = (column) => {
+      if (column < 0) return null
+      const hunk = this.spatialIndex.changeForOldPosition(Point(bufferRow, column))
+      if (!hunk || hunk.oldStart.row !== bufferRow) return null
+      return this.isSoftWrapHunk(hunk) ? hunk : undefined
+    }
+
+    // A continuation screen row's state includes the first non-whitespace
+    // screen column, which we computed above on the assumption that it's on the
+    // first screen row. If it isn't, re-wrap from the start of the buffer row.
+    const firstWrapBeforeText = softWrapAtOrBefore(firstNonWhitespaceBufferColumn)
+    if (firstWrapBeforeText === undefined) return null
+    const canStartOnContinuationRow = firstWrapBeforeText === null
+
+    const firstScreenRow = this.translateBufferPositionWithSpatialIndex(Point(bufferRow, 0)).row
+
+    // Find the first screen row that might change. Start with the screen row
+    // containing the edit, then move up as long as the screen row above it
+    // might overflow at or after the edit. (A screen row reads past its own
+    // end, up to the character that overflows it.)
+    //
+    // Unintuitively, edits on screen row N can affect wrapping behavior not
+    // just on screen rows >N, and not just on screen row N-1, but on some
+    // screen rows above or below row N as long as they're part of the same
+    // buffer row.
+    //
+    // We can stop at the first screen row above that overflows before the edit
+    // only if no screen row above _that_ one can read further. This holds for
+    // continuation screen rows without tabs: they all have the same room, and
+    // a character's width doesn't depend on where it lands, so a screen row
+    // that starts later can't overflow earlier. (This means we can rule out
+    // some earlier screen rows from being affected when screen rows between
+    // them and the edit contain no hard tab characters.)
+    //
+    // It doesn't hold for the first screen row, which has no indentation and
+    // so has at least as much room; so we check that one separately. It also
+    // doesn't hold for tabs, whose width depends on the tab phase; if there
+    // are any, we re-wrap from the first screen row.
+    let startHunk = softWrapAtOrBefore(editStartColumn - 1)
+    if (startHunk === undefined) return null
+    if (startHunk) {
+      for (let screenRow = firstScreenRow + 1; screenRow <= startHunk.newEnd.row; screenRow++) {
+        if (this.tabCounts[screenRow] > 0) {
+          startHunk = null
+          break
+        }
+      }
+    }
+    while (startHunk) {
+      if (!canStartOnContinuationRow) {
+        startHunk = null
+        break
+      }
+      const previousHunk = softWrapAtOrBefore(startHunk.oldStart.column - 1)
+      if (previousHunk === undefined) return null
+      const result = this.scanSoftWrappedScreenRow(
+        reader,
+        previousHunk ? previousHunk.oldStart.column : 0,
+        previousHunk ? previousHunk.newEnd.column : 0,
+        previousHunk ? firstNonWhitespaceScreenColumn : -1,
+        editStartColumn
+      )
+      if (result.wrapBufferColumn != null) {
+        // The screen row above wraps before reaching the edit, so it's
+        // unaffected. Its wrap should match the spatial index; if not, give up
+        // on the shortcut rather than build on something inconsistent.
+        if (result.wrapBufferColumn !== startHunk.oldStart.column) return null
+
+        // Unless that was the first screen row, check it too.
+        if (previousHunk) {
+          const firstScreenRowResult = this.scanSoftWrappedScreenRow(reader, 0, 0, -1, editStartColumn)
+          if (firstScreenRowResult.wrapBufferColumn == null) startHunk = null
+        }
+        break
+      }
+      startHunk = previousHunk
+    }
+
+    const oldLastScreenRow = this.translateBufferPositionWithSpatialIndex(Point(bufferRow, oldLineLength)).row
+    const startScreenRow = startHunk ? startHunk.newEnd.row : firstScreenRow
+    const startBufferColumn = startHunk ? startHunk.oldStart.column : 0
+
+    // Re-wrap until we converge with the old soft wraps or reach the end of the
+    // buffer row.
+    const insertedSoftWraps = []
+    const insertedScreenLineLengths = []
+    const insertedTabCounts = []
+    let convergenceHunk = null
+    let bufferColumn = startBufferColumn
+    let indentLength = startHunk ? startHunk.newEnd.column : 0
+    let firstNonWhitespace = startHunk ? firstNonWhitespaceScreenColumn : -1
+    while (true) {
+      const result = this.scanSoftWrappedScreenRow(reader, bufferColumn, indentLength, firstNonWhitespace, Infinity)
+      insertedScreenLineLengths.push(result.screenLineLength)
+      insertedTabCounts.push(result.tabCount)
+      if (result.wrapBufferColumn == null) break
+
+      insertedSoftWraps.push(result)
+      bufferColumn = result.wrapBufferColumn
+      indentLength = result.indentLength
+      firstNonWhitespace = result.firstNonWhitespaceScreenColumn
+
+      if (bufferColumn >= newEditEndColumn) {
+        const oldBufferColumn = bufferColumn - delta
+        const oldHunk = softWrapAtOrBefore(oldBufferColumn)
+        if (oldHunk === undefined) return null
+        if (oldHunk && oldHunk.oldStart.column === oldBufferColumn && oldHunk.newEnd.column === indentLength) {
+          convergenceHunk = oldHunk
+          break
+        }
+      }
+    }
+
+    // Replace the old soft wraps between the start of re-wrapping and the point
+    // of convergence (or the end of the buffer row). This also shifts the soft
+    // wraps after the point of convergence by the length of the edit. Soft-wrap
+    // hunks at either end of the old range are kept, so the soft wrap at the
+    // point of convergence is already in place.
+    const oldEndBufferColumn = convergenceHunk ? convergenceHunk.oldStart.column : oldLineLength
+    const oldEndScreenRow = convergenceHunk ? convergenceHunk.newEnd.row : oldLastScreenRow + 1
+    this.spatialIndex.spliceOld(
+      Point(bufferRow, startBufferColumn),
+      Point(0, oldEndBufferColumn - startBufferColumn),
+      Point(0, oldEndBufferColumn - startBufferColumn + delta)
+    )
+    const softWrapsToInsertCount = insertedSoftWraps.length - (convergenceHunk ? 1 : 0)
+    for (let i = 0; i < softWrapsToInsertCount; i++) {
+      const {wrapUnexpandedScreenColumn, indentLength} = insertedSoftWraps[i]
+      this.spatialIndex.splice(
+        Point(startScreenRow + i, wrapUnexpandedScreenColumn),
+        Point.ZERO,
+        Point(1, indentLength)
+      )
+    }
+
+    const oldScreenRowCount = oldEndScreenRow - startScreenRow
+    spliceArray(this.screenLineLengths, startScreenRow, oldScreenRowCount, insertedScreenLineLengths)
+    spliceArray(this.tabCounts, startScreenRow, oldScreenRowCount, insertedTabCounts)
+
+    const rightmostInsertedScreenPosition = Point(0, -1)
+    for (let i = 0; i < insertedScreenLineLengths.length; i++) {
+      if (insertedScreenLineLengths[i] > rightmostInsertedScreenPosition.column) {
+        rightmostInsertedScreenPosition.row = startScreenRow + i
+        rightmostInsertedScreenPosition.column = insertedScreenLineLengths[i]
+      }
+    }
+    this.updateRightmostScreenPosition(
+      startScreenRow,
+      oldScreenRowCount,
+      insertedScreenLineLengths.length,
+      rightmostInsertedScreenPosition
+    )
+
+    const oldBufferRowScreenRowCount = oldLastScreenRow + 1 - firstScreenRow
+    const newBufferRowScreenRowCount = oldBufferRowScreenRowCount + insertedScreenLineLengths.length - oldScreenRowCount
+    spliceArray(
+      this.cachedScreenLines,
+      firstScreenRow,
+      oldBufferRowScreenRowCount,
+      new Array(newBufferRowScreenRowCount)
+    )
+
+    return {
+      start: Point(firstScreenRow, 0),
+      oldExtent: Point(oldBufferRowScreenRowCount, 0),
+      newExtent: Point(newBufferRowScreenRowCount, 0)
+    }
+  }
+
+  // Lay out one screen row of a buffer row without folds, starting at the given
+  // buffer column. This must make the same decisions as the main loop of
+  // `updateSpatialIndex`. Pass a negative `firstNonWhitespaceScreenColumn` for
+  // the first screen row of a buffer row.
+  //
+  // If the screen row wraps, returns the buffer column of the wrap
+  // (`wrapBufferColumn`), its unexpanded screen column, and the indentation and
+  // first non-whitespace screen column to start the next screen row with.
+  // Gives up and returns an empty object if it would have to read the
+  // character at `limitBufferColumn` to decide.
+  scanSoftWrappedScreenRow (reader, startBufferColumn, indentLength, firstNonWhitespaceScreenColumn, limitBufferColumn) {
+    const lineLength = reader.lineLength
+    let bufferColumn = startBufferColumn
+    let unexpandedScreenColumn = indentLength
+    let expandedScreenColumn = indentLength
+    let screenLineWidth = indentLength * this.ratioForCharacter(' ')
+    let lastWrapBoundaryUnexpandedScreenColumn = 0
+    let lastWrapBoundaryExpandedScreenColumn = 0
+    let tabCount = 0
+    let tabCountBeforeLastWrapBoundary = 0
+    let consumedCharacterOnScreenRow = false
+
+    while (bufferColumn <= lineLength) {
+      if (bufferColumn >= limitBufferColumn) return {}
+      const previousCharacter = reader.characterAt(bufferColumn - 1)
+      const character = reader.characterAt(bufferColumn)
+
+      if (firstNonWhitespaceScreenColumn < 0) {
+        if (character !== ' ' && character !== '\t') {
+          firstNonWhitespaceScreenColumn = expandedScreenColumn
+        }
+      } else if (consumedCharacterOnScreenRow &&
+                 previousCharacter &&
+                 character &&
+                 this.isWrapBoundary(previousCharacter, character)) {
+        lastWrapBoundaryUnexpandedScreenColumn = unexpandedScreenColumn
+        lastWrapBoundaryExpandedScreenColumn = expandedScreenColumn
+        tabCountBeforeLastWrapBoundary = tabCount
+      }
+
+      let characterWidth
+      if (character === '\t') {
+        const distanceToNextTabStop = this.tabLength - (expandedScreenColumn % this.tabLength)
+        characterWidth = this.ratioForCharacter(' ') * distanceToNextTabStop
+      } else if (character) {
+        characterWidth = this.ratioForCharacter(character)
+      } else {
+        characterWidth = 0
+      }
+
+      if (
+        consumedCharacterOnScreenRow &&
+        screenLineWidth > 0 && characterWidth > 0 &&
+        screenLineWidth + characterWidth > this.softWrapColumn &&
+        previousCharacter && character &&
+        !isCharacterPair(previousCharacter, character)
+      ) {
+        let nextIndentLength = (firstNonWhitespaceScreenColumn < this.softWrapColumn)
+          ? Math.max(0, firstNonWhitespaceScreenColumn)
+          : 0
+        if (nextIndentLength + this.softWrapHangingIndent < this.softWrapColumn) {
+          nextIndentLength += this.softWrapHangingIndent
+        }
+        const wrapUnexpandedScreenColumn = lastWrapBoundaryUnexpandedScreenColumn || unexpandedScreenColumn
+        return {
+          wrapBufferColumn: bufferColumn - (unexpandedScreenColumn - wrapUnexpandedScreenColumn),
+          wrapUnexpandedScreenColumn,
+          screenLineLength: lastWrapBoundaryExpandedScreenColumn || expandedScreenColumn,
+          tabCount: lastWrapBoundaryUnexpandedScreenColumn ? tabCountBeforeLastWrapBoundary : tabCount,
+          indentLength: nextIndentLength,
+          firstNonWhitespaceScreenColumn
+        }
+      }
+
+      if (character === '\t') {
+        tabCount++
+        expandedScreenColumn += this.tabLength - (expandedScreenColumn % this.tabLength)
+      } else {
+        expandedScreenColumn++
+      }
+      screenLineWidth += characterWidth
+      unexpandedScreenColumn++
+      bufferColumn++
+      consumedCharacterOnScreenRow = true
+    }
+
+    return {
+      screenLineLength: expandedScreenColumn - 1,
+      tabCount,
+      firstNonWhitespaceScreenColumn
     }
   }
 

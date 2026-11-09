@@ -812,6 +812,20 @@ describe("TextBuffer", function() {
         expect(buffer.getText()).toBe("hello\nworld\r\nhow are you doing?");
       });
 
+      it("groups all operations in the given function in a single async transaction", async () => {
+        await buffer.transact(async () => {
+          await delay(10)
+          buffer.setTextInRange([[0, 2], [0, 5]], "y");
+          buffer.transact(() => buffer.setTextInRange([[2, 13], [2, 14]], "igg"));
+        });
+
+        expect(buffer.getText()).toBe("hey\nworms\r\nhow are you digging?");
+        buffer.undo();
+        expect(buffer.getText()).toBe("hello\nworms\r\nhow are you doing?");
+        buffer.undo();
+        expect(buffer.getText()).toBe("hello\nworld\r\nhow are you doing?");
+      });
+
       it("halts execution of the function if the transaction is aborted", function() {
         let innerContinued = false;
         let outerContinued = false;
@@ -831,9 +845,66 @@ describe("TextBuffer", function() {
         expect(buffer.getText()).toBe("hey\nworms\r\nhow are you doing?");
       });
 
+      it("halts execution of the function if the async transaction is aborted", async () => {
+        let innerContinued = false;
+        let outerContinued = false;
+
+        await buffer.transact(async () => {
+          await delay(10)
+          buffer.setTextInRange([[0, 2], [0, 5]], "y");
+          await buffer.transact(async () => {
+            buffer.setTextInRange([[2, 13], [2, 14]], "igg");
+            await delay(10)
+            buffer.abortTransaction();
+            innerContinued = true;
+          });
+          outerContinued = true;
+        });
+
+        expect(innerContinued).toBe(false);
+        expect(outerContinued).toBe(true);
+        expect(buffer.getText()).toBe("hey\nworms\r\nhow are you doing?");
+      });
+
+
       it("groups all operations performed within the given function into a single undo/redo operation", function() {
         buffer.transact(function() {
           buffer.setTextInRange([[0, 2], [0, 5]], "y");
+          buffer.setTextInRange([[2, 13], [2, 14]], "igg");
+        });
+
+        expect(buffer.getText()).toBe("hey\nworms\r\nhow are you digging?");
+
+        // subsequent changes are not included in the transaction
+        buffer.setTextInRange([[1, 0], [1, 0]], "little ");
+        buffer.undo();
+        expect(buffer.getText()).toBe("hey\nworms\r\nhow are you digging?");
+
+        // this should undo all changes in the transaction
+        buffer.undo();
+        expect(buffer.getText()).toBe("hello\nworms\r\nhow are you doing?");
+
+        // previous changes are not included in the transaction
+        buffer.undo();
+        expect(buffer.getText()).toBe("hello\nworld\r\nhow are you doing?");
+
+        buffer.redo();
+        expect(buffer.getText()).toBe("hello\nworms\r\nhow are you doing?");
+
+        // this should redo all changes in the transaction
+        buffer.redo();
+        expect(buffer.getText()).toBe("hey\nworms\r\nhow are you digging?");
+
+        // this should redo the change following the transaction
+        buffer.redo();
+        expect(buffer.getText()).toBe("hey\nlittle worms\r\nhow are you digging?");
+      });
+
+      it("groups all operations performed within the given async function into a single undo/redo operation", async () => {
+        await buffer.transact(async () => {
+          await delay(20)
+          buffer.setTextInRange([[0, 2], [0, 5]], "y");
+          await delay(20)
           buffer.setTextInRange([[2, 13], [2, 14]], "igg");
         });
 
@@ -875,9 +946,47 @@ describe("TextBuffer", function() {
         expect(buffer.getText()).toBe("hello\nworld\r\nhow are you doing?");
       });
 
+      it("does not push the async transaction to the undo stack if it is empty", async () => {
+        await buffer.transact(async () => { await delay(20) });
+        buffer.undo();
+        expect(buffer.getText()).toBe("hello\nworld\r\nhow are you doing?");
+
+        buffer.redo();
+        await buffer.transact(async () => {
+          await(20)
+          buffer.abortTransaction()
+        });
+        buffer.undo();
+        expect(buffer.getText()).toBe("hello\nworld\r\nhow are you doing?");
+      });
+
       it("halts execution undoes all operations since the beginning of the transaction if ::abortTransaction() is called", function() {
         let continuedPastAbort = false;
         buffer.transact(function() {
+          buffer.setTextInRange([[0, 2], [0, 5]], "y");
+          buffer.setTextInRange([[2, 13], [2, 14]], "igg");
+          buffer.abortTransaction();
+          continuedPastAbort = true;
+        });
+
+        expect(continuedPastAbort).toBe(false);
+
+        expect(buffer.getText()).toBe("hello\nworms\r\nhow are you doing?");
+
+        buffer.undo();
+        expect(buffer.getText()).toBe("hello\nworld\r\nhow are you doing?");
+
+        buffer.redo();
+        expect(buffer.getText()).toBe("hello\nworms\r\nhow are you doing?");
+
+        buffer.redo();
+        expect(buffer.getText()).toBe("hello\nworms\r\nhow are you doing?");
+      });
+
+      it("halts execution undoes all operations since the beginning of the async transaction if ::abortTransaction() is called", async () => {
+        let continuedPastAbort = false;
+        await buffer.transact(async () => {
+          await delay(20)
           buffer.setTextInRange([[0, 2], [0, 5]], "y");
           buffer.setTextInRange([[2, 13], [2, 14]], "igg");
           buffer.abortTransaction();
@@ -3306,4 +3415,10 @@ function assertChangesEqual(actualChanges, expectedChanges) {
     expect(actualChange.oldText).toEqual(expectedChange.oldText);
     expect(actualChange.newText).toEqual(expectedChange.newText);
   }
+}
+
+function delay(ms) {
+  return new Promise(resolve => {
+    setTimeout(resolve, ms)
+  })
 }

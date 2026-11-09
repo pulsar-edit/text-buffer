@@ -2004,6 +2004,36 @@ describe('DisplayLayer', () => {
       }])
     })
 
+    it('invalidates only the screen rows that a highlighting change touches within a soft-wrapped buffer row', () => {
+      const buffer = new TextBuffer({
+        text: 'aaaa bbbb cccc dddd eeee\nxyz'
+      })
+
+      const displayLayer = buffer.addDisplayLayer({softWrapColumn: 5})
+      const languageMode = new TestLanguageMode([])
+      buffer.setLanguageMode(languageMode)
+      expect(displayLayer.getText()).toBe('aaaa \nbbbb \ncccc \ndddd \neeee\nxyz')
+
+      const idsBefore = displayLayer.getScreenLines().map((line) => line.id)
+      const allChanges = []
+      displayLayer.onDidChange((changes) => allChanges.push(...changes))
+
+      // (0, 6) is on screen row 1; (0, 10) is the soft wrap at the start of
+      // screen row 2, so screen row 2 is included.
+      languageMode.emitHighlightingChangeEvent([[0, 6], [0, 10]])
+
+      expect(allChanges).toEqual([{
+        oldRange: Range(Point(1, 0), Point(3, 0)),
+        newRange: Range(Point(1, 0), Point(3, 0))
+      }])
+
+      const idsAfter = displayLayer.getScreenLines().map((line) => line.id)
+      expect(idsAfter[0]).toBe(idsBefore[0])
+      expect(idsAfter[1]).not.toBe(idsBefore[1])
+      expect(idsAfter[2]).not.toBe(idsBefore[2])
+      expect(idsAfter.slice(3)).toEqual(idsBefore.slice(3))
+    })
+
     it('gracefully handles the text decoration iterator reporting decoration boundaries beyond the end of a line', () => {
       const buffer = new TextBuffer({
         text: 'abc\ndef'
@@ -2633,7 +2663,8 @@ describe('DisplayLayer', () => {
             character === '中'
         }
         const displayLayer = buffer.addDisplayLayer(params)
-        if (random(2)) buffer.setLanguageMode(new TestLanguageMode([], buffer, random))
+        const languageMode = random(2) ? new TestLanguageMode([], buffer, random) : null
+        if (languageMode) buffer.setLanguageMode(languageMode)
 
         const updateWithinBufferRow = displayLayer.updateSpatialIndexForEditWithinBufferRow
         displayLayer.updateSpatialIndexForEditWithinBufferRow = function (change) {
@@ -2665,6 +2696,21 @@ describe('DisplayLayer', () => {
             displayLayer.getScreenLines(startRow, startRow + random.intBetween(1, 10))
           } else {
             displayLayer.getScreenLines()
+          }
+
+          // Change highlighting (but not text) over a short range, so that only
+          // some screen rows of a long buffer row are invalidated.
+          if (languageMode && random(2)) {
+            const highlightRow = random(buffer.getLineCount())
+            const highlightRowLength = buffer.lineLengthForRow(highlightRow)
+            const highlightStart = random(highlightRowLength + 1)
+            const highlightEnd = Math.min(highlightRowLength, highlightStart + random(2 * params.softWrapColumn))
+            const highlightRange = Range(Point(highlightRow, highlightStart), Point(highlightRow, highlightEnd))
+            log('highlight ' + highlightRange)
+            const markerId = languageMode.getNextMarkerId()
+            languageMode.classNamesByScopeId.set(markerId, 'h')
+            languageMode.markerIndex.insert(markerId, highlightRange.start, highlightRange.end)
+            languageMode.emitHighlightingChangeEvent(highlightRange)
           }
 
           const freshDisplayLayer = buffer.addDisplayLayer(params)

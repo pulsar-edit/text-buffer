@@ -57,7 +57,14 @@ class ScreenLineBuilder {
       this.screenRow = this.displayLayer.translateBufferPositionWithSpatialIndex(Point(this.bufferPosition.row, 0)).row
     }
 
-    const endBufferRow = this.displayLayer.translateScreenPositionWithSpatialIndex(Point(endScreenRow, Infinity)).row
+    // The buffer position at the end of the last screen row we'll build. The
+    // highlight iterator needs to report boundaries up to and including this
+    // position. (If that screen row ends at a soft wrap, the builder doesn't
+    // ask for boundaries at the wrap position, but those belong to the
+    // following screen row anyway.)
+    const endBufferPosition = this.displayLayer.buffer.clipPosition(
+      this.displayLayer.translateScreenPositionWithSpatialIndex(Point(Math.max(0, endScreenRow - 1), Infinity))
+    )
 
     let didSeekDecorationIterator = false
     const decorationIterator = this.displayLayer.buffer.languageMode.buildHighlightIterator()
@@ -119,7 +126,7 @@ class ScreenLineBuilder {
 
       if (!didSeekDecorationIterator || this.compareBufferPosition(decorationIterator.getPosition()) > 0) {
         didSeekDecorationIterator = true
-        this.scopeIdsToReopen = decorationIterator.seek(this.bufferPosition, endBufferRow) || []
+        this.scopeIdsToReopen = decorationIterator.seek(this.bufferPosition, endBufferPosition) || []
       }
 
       // We're resuming partway through a soft-wrapped buffer row.
@@ -140,8 +147,25 @@ class ScreenLineBuilder {
             if (this.screenRow === endScreenRow) {
               break screenRowLoop
             }
+            // If the next screen row is still cached, let the cached-row
+            // branch above skip it, just as it does for cached buffer rows.
+            // Otherwise an invalidated screen row in the middle of a long
+            // buffer row would cause every later screen row to be rebuilt
+            // (and get a new ID). Resuming afterward works the same way as
+            // starting the build partway through a buffer row, which also
+            // means it can't happen when a fold joins this buffer row to an
+            // earlier one.
+            if (
+              this.displayLayer.cachedScreenLines[this.screenRow] &&
+              this.displayLayer.findBoundaryPrecedingBufferRow(this.bufferPosition.row) === this.bufferPosition.row
+            ) {
+              softWrapIndent = nextHunk.newEnd.column
+              hunkIndex++
+              continue screenRowLoop
+            }
+            this.emitIndentWhitespace(nextHunk.newEnd.column)
           } else {
-            this.emitFold(nextHunk, decorationIterator, endBufferRow)
+            this.emitFold(nextHunk, decorationIterator, endBufferPosition)
           }
 
           hunkIndex++
@@ -271,7 +295,7 @@ class ScreenLineBuilder {
     }
   }
 
-  emitFold (nextHunk, decorationIterator, endBufferRow) {
+  emitFold (nextHunk, decorationIterator, endBufferPosition) {
     this.emitCloseTag(this.getBuiltInScopeId(this.currentBuiltInClassNameFlags))
     this.currentBuiltInClassNameFlags = 0
 
@@ -285,7 +309,7 @@ class ScreenLineBuilder {
     this.bufferPosition.row = nextHunk.oldEnd.row
     this.bufferPosition.column = nextHunk.oldEnd.column
 
-    this.scopeIdsToReopen = decorationIterator.seek(this.bufferPosition, endBufferRow)
+    this.scopeIdsToReopen = decorationIterator.seek(this.bufferPosition, endBufferPosition)
 
     this.bufferLineLength = this.displayLayer.buffer.lineLengthForRow(this.bufferPosition.row)
 
@@ -301,7 +325,6 @@ class ScreenLineBuilder {
     this.currentBuiltInClassNameFlags = 0
     this.closeContainingScopes()
     this.emitNewline(nextHunk.newEnd.column)
-    this.emitIndentWhitespace(nextHunk.newEnd.column)
   }
 
   emitLineEnding () {

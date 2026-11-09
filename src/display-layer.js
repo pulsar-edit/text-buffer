@@ -148,12 +148,21 @@ class DisplayLayer {
     this.cachedScreenLines.length = 0
     if (this.languageModeDisposable) this.languageModeDisposable.dispose()
     this.languageModeDisposable = this.buffer.languageMode.onDidChangeHighlighting((bufferRange) => {
-      bufferRange = Range.fromObject(bufferRange)
+      bufferRange = this.buffer.clipRange(bufferRange)
       this.populateSpatialIndexIfNeeded(bufferRange.end.row + 1, Infinity)
-      const startBufferRow = this.findBoundaryPrecedingBufferRow(bufferRange.start.row)
-      const endBufferRow = this.findBoundaryFollowingBufferRow(bufferRange.end.row + 1)
-      const startRow = this.translateBufferPositionWithSpatialIndex(Point(startBufferRow, 0), 'backward').row
-      const endRow = this.translateBufferPositionWithSpatialIndex(Point(endBufferRow, 0), 'backward').row
+      // Invalidate only the screen rows that contain part of the range, rather
+      // than every screen row of the buffer rows it touches. This works around
+      // folds and soft wraps without special handling:
+      //
+      // * A position inside folded text translates to the screen row that
+      //   holds the fold.
+      // * A position at a soft wrap translates to the start of the following
+      //   screen row, which is where the builder emits boundaries found there.
+      //
+      // We treat the end of the range as inclusive, since a boundary exactly at
+      // `bufferRange.end` may have changed.
+      const startRow = this.translateBufferPositionWithSpatialIndex(bufferRange.start, 'backward').row
+      const endRow = this.translateBufferPositionWithSpatialIndex(bufferRange.end, 'forward').row + 1
       const extent = Point(endRow - startRow, 0)
       spliceArray(this.cachedScreenLines, startRow, extent.row, new Array(extent.row))
       this.didChange({

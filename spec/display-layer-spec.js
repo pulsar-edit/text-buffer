@@ -2478,10 +2478,12 @@ describe('DisplayLayer', () => {
 
   const randomizedTest =
   it('updates the displayed text correctly when the underlying buffer changes', () => {
+    // Set the SEED environment variable to re-run a single failing seed.
+    const fixedSeed = process.env.SEED ? Number(process.env.SEED) : null
     const now = Date.now()
 
-    for (let i = 0; i < 200; i++) {
-      let seed = now + i
+    for (let i = 0; i < (fixedSeed == null ? 200 : 1); i++) {
+      let seed = fixedSeed == null ? now + i : fixedSeed
 
       try {
         const random = new Random(seed)
@@ -2563,6 +2565,7 @@ describe('DisplayLayer', () => {
           }
           verifyTokenConsistency(displayLayer)
           verifyText(random, displayLayer, freshDisplayLayer)
+          verifyScreenLinesForRandomRange(random, displayLayer, freshDisplayLayer)
           verifyRightmostScreenPosition(freshDisplayLayer)
           verifyScreenLineIds(displayLayer, screenLinesById)
           verifyPositionTranslations(random, displayLayer)
@@ -2670,6 +2673,27 @@ function verifyText (random, displayLayer, freshDisplayLayer) {
   const text = displayLayer.getText(startRow, endRow)
   const expectedText = freshDisplayLayer.getText().split('\n').slice(startRow, endRow).join('\n')
   expect(JSON.stringify(text)).toBe(JSON.stringify(expectedText), `Text for rows ${startRow} - ${endRow}`)
+}
+
+// Build screen lines for a random range of screen rows, both on the existing
+// display layer (with whatever is in its cache) and on a copy with a cold
+// cache, and compare their tokens to those of a display layer that built every
+// screen line from the top. A range may start partway through a soft-wrapped
+// buffer row.
+function verifyScreenLinesForRandomRange (random, displayLayer, freshDisplayLayer) {
+  const screenLineCount = freshDisplayLayer.getScreenLineCount()
+  const startRow = random(screenLineCount)
+  const endRow = random.intBetween(startRow, screenLineCount)
+  const expectedTokens = getTokens(freshDisplayLayer, startRow, endRow)
+
+  // Jasmine 2 has no custom failure messages, so label the compared values.
+  const coldDisplayLayer = displayLayer.copy()
+  expect({cache: 'cold', startRow, endRow, tokens: getTokens(coldDisplayLayer, startRow, endRow)})
+    .toEqual({cache: 'cold', startRow, endRow, tokens: expectedTokens})
+  coldDisplayLayer.destroy()
+
+  expect({cache: 'warm', startRow, endRow, tokens: getTokens(displayLayer, startRow, endRow)})
+    .toEqual({cache: 'warm', startRow, endRow, tokens: expectedTokens})
 }
 
 function verifyLineLengths (displayLayer) {

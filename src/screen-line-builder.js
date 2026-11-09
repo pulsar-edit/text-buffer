@@ -23,14 +23,38 @@ class ScreenLineBuilder {
     this.requestedEndScreenRow = endScreenRow
     this.displayLayer.populateSpatialIndexIfNeeded(this.displayLayer.buffer.getLineCount(), endScreenRow)
 
-    this.bufferPosition = {
-      row: this.displayLayer.findBoundaryPrecedingBufferRow(
-        this.displayLayer.translateScreenPositionWithSpatialIndex(Point(startScreenRow, 0)).row
-      ),
-      column: 0
-    }
+    // The indentation of the screen row we're about to build, if it's the
+    // continuation of a soft-wrapped buffer row; -1 otherwise.
+    let softWrapIndent = -1
 
-    this.screenRow = this.displayLayer.translateBufferPositionWithSpatialIndex(Point(this.bufferPosition.row, 0)).row
+    // If the first requested screen row begins in the middle of a buffer row
+    // because of a soft wrap, start building there. Everything we need to
+    // resume — the buffer position and the indentation — is recorded on the
+    // soft-wrap hunk, so there's no need to rebuild the earlier screen rows of
+    // the buffer row.
+    const startHunk = startScreenRow > 0
+      ? this.displayLayer.spatialIndex.changeForNewPosition(Point(startScreenRow, 0))
+      : null
+    if (
+      startHunk &&
+      this.displayLayer.isSoftWrapHunk(startHunk) &&
+      startHunk.newStart.row === startScreenRow - 1 &&
+      startHunk.newEnd.row === startScreenRow &&
+      // A fold ending on this buffer row would join it to an earlier one.
+      this.displayLayer.findBoundaryPrecedingBufferRow(startHunk.oldEnd.row) === startHunk.oldEnd.row
+    ) {
+      this.bufferPosition = {row: startHunk.oldEnd.row, column: startHunk.oldEnd.column}
+      this.screenRow = startScreenRow
+      softWrapIndent = startHunk.newEnd.column
+    } else {
+      this.bufferPosition = {
+        row: this.displayLayer.findBoundaryPrecedingBufferRow(
+          this.displayLayer.translateScreenPositionWithSpatialIndex(Point(startScreenRow, 0)).row
+        ),
+        column: 0
+      }
+      this.screenRow = this.displayLayer.translateBufferPositionWithSpatialIndex(Point(this.bufferPosition.row, 0)).row
+    }
 
     const endBufferRow = this.displayLayer.translateScreenPositionWithSpatialIndex(Point(endScreenRow, Infinity)).row
 
@@ -38,11 +62,13 @@ class ScreenLineBuilder {
     const decorationIterator = this.displayLayer.buffer.languageMode.buildHighlightIterator()
     const hunks = this.displayLayer.spatialIndex.getChangesInNewRange(Point(this.screenRow, 0), Point(endScreenRow, 0))
     let hunkIndex = 0
+    // Skip the soft-wrap hunk that ends at the start of our first screen row,
+    // if it was included.
+    while (hunkIndex < hunks.length && hunks[hunkIndex].newStart.row < this.screenRow) hunkIndex++
 
     this.containingScopeIds = []
     this.scopeIdsToReopen = []
     this.screenLines = []
-    this.bufferPosition.column = 0
     this.beginLine()
 
     // Loop through all characters spanning the given screen row range, building
@@ -60,6 +86,7 @@ class ScreenLineBuilder {
             if (nextHunk.newEnd.row > nextHunk.newStart.row) {
               this.screenRow++
               this.bufferPosition.column = nextHunk.oldEnd.column
+              softWrapIndent = nextHunk.newEnd.column
               hunkIndex++
               continue screenRowLoop
             } else {
@@ -76,6 +103,7 @@ class ScreenLineBuilder {
         this.screenColumn = 0
         this.bufferPosition.row++
         this.bufferPosition.column = 0
+        softWrapIndent = -1
         continue
       }
 
@@ -92,10 +120,11 @@ class ScreenLineBuilder {
         this.scopeIdsToReopen = decorationIterator.seek(this.bufferPosition, endBufferRow) || []
       }
 
-      var prevCachedScreenLine = this.displayLayer.cachedScreenLines[this.screenRow - 1]
-      if (prevCachedScreenLine && prevCachedScreenLine.softWrapIndent >= 0) {
-        this.inLeadingWhitespace = false
-        if (prevCachedScreenLine.softWrapIndent > 0) this.emitIndentWhitespace(prevCachedScreenLine.softWrapIndent)
+      // We're resuming partway through a soft-wrapped buffer row.
+      if (softWrapIndent >= 0) {
+        this.inLeadingWhitespace = this.isPrecededOnlyByWhitespace(this.bufferPosition)
+        if (softWrapIndent > 0) this.emitIndentWhitespace(softWrapIndent)
+        softWrapIndent = -1
       }
 
       // This loop may visit multiple buffer rows if there are folds and
@@ -258,6 +287,9 @@ class ScreenLineBuilder {
 
     this.bufferLineLength = this.displayLayer.buffer.lineLengthForRow(this.bufferPosition.row)
     this.trailingWhitespaceStartColumn = this.displayLayer.findTrailingWhitespaceStartColumn(this.bufferPosition.row)
+    // Whitespace that was trailing on the buffer row where the fold started
+    // says nothing about the buffer row where it ends.
+    this.inTrailingWhitespace = false
   }
 
   emitSoftWrap (nextHunk) {
@@ -420,6 +452,19 @@ class ScreenLineBuilder {
     if (this.requestedStartScreenRow <= this.screenRow && this.screenRow < this.requestedEndScreenRow) {
       this.screenLines.push(screenLine)
     }
+  }
+
+  // When we start building partway through a buffer row, determine whether
+  // we're still in its leading whitespace (which can span soft wraps).
+  isPrecededOnlyByWhitespace ({row, column}) {
+    if (this.displayLayer.findBoundaryPrecedingBufferRow(row) !== row) return false
+    const buffer = this.displayLayer.buffer
+    const position = {row, column: 0}
+    for (; position.column < column; position.column++) {
+      const character = buffer.getCharacterAtPosition(position)
+      if (character !== ' ' && character !== '\t') return false
+    }
+    return true
   }
 
   compareBufferPosition (position) {

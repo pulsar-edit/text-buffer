@@ -2004,6 +2004,36 @@ describe('DisplayLayer', () => {
       }])
     })
 
+    it('invalidates only the screen rows that a highlighting change touches within a soft-wrapped buffer row', () => {
+      const buffer = new TextBuffer({
+        text: 'aaaa bbbb cccc dddd eeee\nxyz'
+      })
+
+      const displayLayer = buffer.addDisplayLayer({softWrapColumn: 5})
+      const languageMode = new TestLanguageMode([])
+      buffer.setLanguageMode(languageMode)
+      expect(displayLayer.getText()).toBe('aaaa \nbbbb \ncccc \ndddd \neeee\nxyz')
+
+      const idsBefore = displayLayer.getScreenLines().map((line) => line.id)
+      const allChanges = []
+      displayLayer.onDidChange((changes) => allChanges.push(...changes))
+
+      // (0, 6) is on screen row 1; (0, 10) is the soft wrap at the start of
+      // screen row 2, so screen row 2 is included.
+      languageMode.emitHighlightingChangeEvent([[0, 6], [0, 10]])
+
+      expect(allChanges).toEqual([{
+        oldRange: Range(Point(1, 0), Point(3, 0)),
+        newRange: Range(Point(1, 0), Point(3, 0))
+      }])
+
+      const idsAfter = displayLayer.getScreenLines().map((line) => line.id)
+      expect(idsAfter[0]).toBe(idsBefore[0])
+      expect(idsAfter[1]).not.toBe(idsBefore[1])
+      expect(idsAfter[2]).not.toBe(idsBefore[2])
+      expect(idsAfter.slice(3)).toEqual(idsBefore.slice(3))
+    })
+
     it('gracefully handles the text decoration iterator reporting decoration boundaries beyond the end of a line', () => {
       const buffer = new TextBuffer({
         text: 'abc\ndef'
@@ -2478,10 +2508,12 @@ describe('DisplayLayer', () => {
 
   const randomizedTest =
   it('updates the displayed text correctly when the underlying buffer changes', () => {
+    // Set the SEED environment variable to re-run a single failing seed.
+    const fixedSeed = process.env.SEED ? Number(process.env.SEED) : null
     const now = Date.now()
 
-    for (let i = 0; i < 200; i++) {
-      let seed = now + i
+    for (let i = 0; i < (fixedSeed == null ? 200 : 1); i++) {
+      let seed = fixedSeed == null ? now + i : fixedSeed
 
       try {
         const random = new Random(seed)
@@ -2563,6 +2595,14 @@ describe('DisplayLayer', () => {
           }
           verifyTokenConsistency(displayLayer)
           verifyText(random, displayLayer, freshDisplayLayer)
+          verifyScreenLinesForRandomRange(random, displayLayer, freshDisplayLayer)
+          verifySpatialIndexMatchesNewDisplayLayer(displayLayer, {
+            tabLength: 4,
+            invisibles,
+            showIndentGuides,
+            softWrapColumn: displayLayer.softWrapColumn,
+            foldsMarkerLayer: displayLayer.foldsMarkerLayer.copy()
+          })
           verifyRightmostScreenPosition(freshDisplayLayer)
           verifyScreenLineIds(displayLayer, screenLinesById)
           verifyPositionTranslations(random, displayLayer)
@@ -2578,7 +2618,158 @@ describe('DisplayLayer', () => {
       }
     }
   })
+
+  it('re-wraps earlier screen rows whose overflow depends on an edit', () => {
+    // The first screen row has no indentation, so it has room for more
+    // characters than the continuation screen rows below it. Its overflow
+    // check reads up to buffer column 10, which is on screen row 2.
+    const buffer = new TextBuffer({text: 'a ' + 'b'.repeat(20)})
+    const displayLayer = buffer.addDisplayLayer({softWrapColumn: 10, softWrapHangingIndent: 4})
+    expect(displayLayer.getText()).toBe('a \n    bbbbbb\n    bbbbbb\n    bbbbbb\n    bb')
+    expect(displayLayer.translateBufferPosition([0, 9]).row).toBe(2)
+
+    // A space at buffer column 9 makes buffer column 10 a wrap boundary.
+    buffer.insert([0, 9], ' ')
+    expect(displayLayer.getText()).toBe('a bbbbbbb \n    bbbbbb\n    bbbbbb\n    b')
+    expect(displayLayer.getText()).toBe(buffer.addDisplayLayer({softWrapColumn: 10, softWrapHangingIndent: 4}).getText())
+  })
+
+  // `copy()` copies the spatial index, so the test above can't tell whether
+  // the index was updated correctly. This one compares against a display layer
+  // built from scratch after each edit.
+  const longBufferRowTest =
+  it('re-wraps long buffer rows correctly after edits within them', () => {
+    const fixedSeed = process.env.SEED ? Number(process.env.SEED) : null
+    const now = Date.now()
+    let editsWithinBufferRow = 0
+
+    for (let i = 0; i < (fixedSeed == null ? 100 : 1); i++) {
+      const seed = fixedSeed == null ? now + i : fixedSeed
+
+      try {
+        const random = new Random(seed)
+        const buffer = new TextBuffer({text: buildLongBufferRows(random)})
+        const params = {
+          tabLength: random.intBetween(2, 8),
+          softWrapColumn: random.intBetween(5, 80),
+          softWrapHangingIndent: random(2) ? 0 : random.intBetween(1, 6),
+          showIndentGuides: Boolean(random(2)),
+          invisibles: random(2) ? {space: '•'} : {},
+          ratioForCharacter: (character) => character === '中' ? 2 : 1,
+          isWrapBoundary: (previousCharacter, character) =>
+            ((previousCharacter === ' ' || previousCharacter === '\t' ||
+              previousCharacter === '-' || previousCharacter === '/') &&
+             character !== ' ' && character !== '\t') ||
+            character === '中'
+        }
+        const displayLayer = buffer.addDisplayLayer(params)
+        const languageMode = random(2) ? new TestLanguageMode([], buffer, random) : null
+        if (languageMode) buffer.setLanguageMode(languageMode)
+
+        const updateWithinBufferRow = displayLayer.updateSpatialIndexForEditWithinBufferRow
+        displayLayer.updateSpatialIndexForEditWithinBufferRow = function (change) {
+          const result = updateWithinBufferRow.call(this, change)
+          if (result) editsWithinBufferRow++
+          return result
+        }
+
+        displayLayer.getScreenLines()
+
+        for (let j = 0; j < 20; j++) {
+          const bufferRow = random(buffer.getLineCount())
+          const lineLength = buffer.lineLengthForRow(bufferRow)
+          // Edits near the start of a buffer row exercise the search for the
+          // first affected screen row, which differs for the first screen row.
+          const startColumn = random(2)
+            ? random(lineLength + 1)
+            : random(Math.min(lineLength, 4 * params.softWrapColumn) + 1)
+          const endColumn = Math.min(lineLength, startColumn + (random(3) ? 0 : random.intBetween(1, 6)))
+          const text = random(4) ? buildLongBufferRowText(random, random.intBetween(1, 6)) : ''
+          const range = Range(Point(bufferRow, startColumn), Point(bufferRow, endColumn))
+          log('edit ' + range + ' ' + JSON.stringify(text))
+
+          verifyChangeEvent(displayLayer, () => buffer.setTextInRange(range, text))
+
+          // Sometimes leave part of the display layer's cache cold.
+          if (random(2)) {
+            const startRow = random(displayLayer.getScreenLineCount())
+            displayLayer.getScreenLines(startRow, startRow + random.intBetween(1, 10))
+          } else {
+            displayLayer.getScreenLines()
+          }
+
+          // Change highlighting (but not text) over a short range, so that only
+          // some screen rows of a long buffer row are invalidated.
+          if (languageMode && random(2)) {
+            const highlightRow = random(buffer.getLineCount())
+            const highlightRowLength = buffer.lineLengthForRow(highlightRow)
+            const highlightStart = random(highlightRowLength + 1)
+            const highlightEnd = Math.min(highlightRowLength, highlightStart + random(2 * params.softWrapColumn))
+            const highlightRange = Range(Point(highlightRow, highlightStart), Point(highlightRow, highlightEnd))
+            log('highlight ' + highlightRange)
+            const markerId = languageMode.getNextMarkerId()
+            languageMode.classNamesByScopeId.set(markerId, 'h')
+            languageMode.markerIndex.insert(markerId, highlightRange.start, highlightRange.end)
+            languageMode.emitHighlightingChangeEvent(highlightRange)
+          }
+
+          const freshDisplayLayer = buffer.addDisplayLayer(params)
+          const screenLineCount = freshDisplayLayer.getScreenLineCount()
+          expect(displayLayer.getScreenLineCount()).toBe(screenLineCount)
+          expect(displayLayer.spatialIndex.getChanges()).toEqual(freshDisplayLayer.spatialIndex.getChanges())
+          expect(displayLayer.screenLineLengths).toEqual(freshDisplayLayer.screenLineLengths)
+          expect(displayLayer.tabCounts).toEqual(freshDisplayLayer.tabCounts)
+          verifyRightmostScreenPosition(displayLayer)
+          expect(displayLayer.getText()).toBe(freshDisplayLayer.getText())
+
+          const startRow = random(screenLineCount)
+          const endRow = random.intBetween(startRow, screenLineCount)
+          expect({startRow, endRow, tokens: getTokens(displayLayer, startRow, endRow)})
+            .toEqual({startRow, endRow, tokens: getTokens(freshDisplayLayer, startRow, endRow)})
+          freshDisplayLayer.destroy()
+
+          if (longBufferRowTest.result.failedExpectations.length > 0) {
+            console.log(`Failing Seed: ${seed}`)
+            return
+          }
+        }
+      } catch (error) {
+        console.log(`Failing Seed: ${seed}`)
+        throw error
+      }
+    }
+
+    expect(editsWithinBufferRow).toBeGreaterThan(0)
+  })
 })
+
+const LONG_BUFFER_ROW_WORDS = ['alpha', 'be', 'c', 'delta-epsilon', 'a/b/c', '中中', 'longidentifiername', 'x', 'b'.repeat(40)]
+
+function buildLongBufferRowText (random, length) {
+  let text = ''
+  while (text.length < length) {
+    const k = random(10)
+    if (k < 5) {
+      text += LONG_BUFFER_ROW_WORDS[random(LONG_BUFFER_ROW_WORDS.length)]
+    } else if (k < 8) {
+      text += ' '
+    } else if (k < 9) {
+      text += '\t'
+    } else {
+      text += '-'
+    }
+  }
+  return text.slice(0, length)
+}
+
+function buildLongBufferRows (random) {
+  const lines = []
+  for (let i = 0, n = random.intBetween(1, 3); i < n; i++) {
+    const indent = random(2) ? '' : (random(2) ? '  ' : '\t').repeat(random.intBetween(1, 3))
+    lines.push(indent + buildLongBufferRowText(random, random.intBetween(100, 800)))
+  }
+  return lines.join('\n')
+}
 
 function performRandomChange (random, displayLayer) {
   const text = buildRandomLines(random, 4)
@@ -2670,6 +2861,39 @@ function verifyText (random, displayLayer, freshDisplayLayer) {
   const text = displayLayer.getText(startRow, endRow)
   const expectedText = freshDisplayLayer.getText().split('\n').slice(startRow, endRow).join('\n')
   expect(JSON.stringify(text)).toBe(JSON.stringify(expectedText), `Text for rows ${startRow} - ${endRow}`)
+}
+
+// `copy()` copies the spatial index, so compare it to one built from scratch.
+function verifySpatialIndexMatchesNewDisplayLayer (displayLayer, params) {
+  const newDisplayLayer = displayLayer.buffer.addDisplayLayer(params)
+  newDisplayLayer.getScreenLines()
+  displayLayer.getScreenLines()
+  expect({spatialIndex: displayLayer.spatialIndex.getChanges()})
+    .toEqual({spatialIndex: newDisplayLayer.spatialIndex.getChanges()})
+  expect({screenLineLengths: displayLayer.screenLineLengths, tabCounts: displayLayer.tabCounts})
+    .toEqual({screenLineLengths: newDisplayLayer.screenLineLengths, tabCounts: newDisplayLayer.tabCounts})
+  newDisplayLayer.destroy()
+}
+
+// Build screen lines for a random range of screen rows, both on the existing
+// display layer (with whatever is in its cache) and on a copy with a cold
+// cache, and compare their tokens to those of a display layer that built every
+// screen line from the top. A range may start partway through a soft-wrapped
+// buffer row.
+function verifyScreenLinesForRandomRange (random, displayLayer, freshDisplayLayer) {
+  const screenLineCount = freshDisplayLayer.getScreenLineCount()
+  const startRow = random(screenLineCount)
+  const endRow = random.intBetween(startRow, screenLineCount)
+  const expectedTokens = getTokens(freshDisplayLayer, startRow, endRow)
+
+  // Jasmine 2 has no custom failure messages, so label the compared values.
+  const coldDisplayLayer = displayLayer.copy()
+  expect({cache: 'cold', startRow, endRow, tokens: getTokens(coldDisplayLayer, startRow, endRow)})
+    .toEqual({cache: 'cold', startRow, endRow, tokens: expectedTokens})
+  coldDisplayLayer.destroy()
+
+  expect({cache: 'warm', startRow, endRow, tokens: getTokens(displayLayer, startRow, endRow)})
+    .toEqual({cache: 'warm', startRow, endRow, tokens: expectedTokens})
 }
 
 function verifyLineLengths (displayLayer) {

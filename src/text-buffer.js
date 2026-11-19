@@ -2192,6 +2192,10 @@ class TextBuffer {
   //   * `buildHighlightIterator` - A function that returns an iterator object with the following
   //     methods:
   //     * `seek` A {Function} that takes a {Point} and resets the iterator to that position.
+  //       It also receives a second {Point}: the buffer position at the end of the text that
+  //       will be highlighted. The iterator must report boundaries up to and including that
+  //       position, and may stop there. (Before text-buffer 16, this argument was a buffer
+  //       row {Number}, meaning "through the end of this buffer row.")
   //     * `moveToSuccessor` A {Function} that advances the iterator to the next token
   //     * `getPosition` A {Function} that returns a {Point} representing the iterator's current
   //       position in the buffer.
